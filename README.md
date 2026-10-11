@@ -4,15 +4,22 @@ roblox look-alike for iphone. fake profile, robux, avatar, marketplace, the lot.
 
 ## the app
 
-| <img src="shots/profile.jpg" width="170"> | <img src="shots/menu.jpg" width="170"> | <img src="shots/marketplace.jpg" width="170"> | <img src="shots/item.jpg" width="170"> | <img src="shots/robux.jpg" width="170"> |
-|:-:|:-:|:-:|:-:|:-:|
-| profile | menu | marketplace | item page | buy robux |
+<p>
+  <img src="shots/profile.jpg" width="240" alt="profile">
+  <img src="shots/menu.jpg" width="240" alt="menu">
+  <img src="shots/marketplace.jpg" width="240" alt="marketplace">
+  <img src="shots/item.jpg" width="240" alt="item">
+  <img src="shots/robux.jpg" width="240" alt="robux">
+</p>
 
 ## the editor
 
-| <img src="shots/edit-profile.jpg" width="170"> | <img src="shots/outfits.jpg" width="170"> | <img src="shots/skin.jpg" width="170"> | <img src="shots/build.jpg" width="170"> |
-|:-:|:-:|:-:|:-:|
-| edit profile | saved outfits | skin | build |
+<p>
+  <img src="shots/edit-profile.jpg" width="240" alt="edit profile">
+  <img src="shots/outfits.jpg" width="240" alt="outfits">
+  <img src="shots/skin.jpg" width="240" alt="skin">
+  <img src="shots/build.jpg" width="240" alt="build">
+</p>
 
 ## build
 
