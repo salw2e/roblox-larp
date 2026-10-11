@@ -3,6 +3,7 @@ import BloxKit
 
 struct ProfileView: View {
     @EnvironmentObject var store: Store
+    @Environment(\.dismiss) private var dismiss
     @State private var editing = false
     @State private var dressing = false
 
@@ -27,7 +28,7 @@ struct ProfileView: View {
             }
             .padding(.horizontal, 22)
         }
-        .background(Color.white)
+        .background(Color.bg)
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $editing) { EditProfileView() }
         .fullScreenCover(isPresented: $dressing) { AppearanceView() }
@@ -36,12 +37,15 @@ struct ProfileView: View {
     private var stage: some View {
         ZStack(alignment: .topLeading) {
             AvatarPicture(image: store.avatar).frame(height: 230).frame(maxWidth: .infinity).padding(.top, 60).padding(.bottom, 20)
-            Image(systemName: "xmark").font(.system(size: 18, weight: .medium))
-                .frame(width: 40, height: 40).background(.white, in: Circle())
-                .padding(.top, 8)
+            Button { dismiss() } label: {
+                Image(systemName: "xmark").font(.system(size: 18, weight: .medium))
+                    .frame(width: 40, height: 40).background(Color.field, in: Circle())
+            }
+            .accessibilityIdentifier("closeProfile")
+            .padding(.top, 8)
         }
         .background(
-            LinearGradient(colors: [Color(white: 0.84), .white], startPoint: .top, endPoint: .bottom)
+            LinearGradient(colors: [Color(white: 0.3), Color.bg], startPoint: .top, endPoint: .bottom)
                 .padding(.horizontal, -22).ignoresSafeArea(edges: .top)
         )
     }
@@ -71,7 +75,7 @@ struct ProfileView: View {
         Text(text).font(.system(size: 14)).lineLimit(1).minimumScaleFactor(0.7)
             .padding(.horizontal, 13).frame(height: 32)
             .background(Color.field.opacity(dim ? 0.6 : 1), in: Capsule())
-            .foregroundStyle(dim ? Color(white: 0.65) : .primary)
+            .foregroundStyle(dim ? Color(white: 0.5) : .primary)
             .accessibilityIdentifier(id)
     }
 
@@ -152,7 +156,7 @@ struct FullProfileView: View {
             }
             .padding(22)
         }
-        .background(Color.white)
+        .background(Color.bg)
         .navigationTitle(p.displayName)
         .navigationBarTitleDisplayMode(.inline)
     }

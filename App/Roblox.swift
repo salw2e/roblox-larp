@@ -93,4 +93,23 @@ enum Roblox {
         let (a, b) = await (assets, bundles)
         return items.map { var i = $0; i.thumb = (i.bundle ? b : a)[i.id] ?? i.thumb; return i }
     }
+
+    static func headshot(_ userId: Int64) async throws -> String? {
+        Parse.images(try await fetch(url("https://thumbnails.roblox.com/v1/users/avatar-headshot",
+                                         ["userIds": "\(userId)", "size": "150x150", "format": "Png"])))[userId]
+    }
+
+    static func home() async throws -> [(title: String, games: [Game])] {
+        let sorts = Parse.sorts(try await fetch(url("https://apis.roblox.com/explore-api/v1/get-sorts",
+                                                    ["sessionId": UUID().uuidString])))
+        let ids = Array(Set(sorts.flatMap { $0.games.prefix(12).map(\.id) }))
+        var wide: [Int64: String] = [:]
+        for chunk in stride(from: 0, to: ids.count, by: 50).map({ Array(ids[$0..<min($0 + 50, ids.count)]) }) {
+            let u = url("https://thumbnails.roblox.com/v1/games/multiget/thumbnails",
+                        ["universeIds": chunk.map { "\($0)" }.joined(separator: ","), "countPerUniverse": "1",
+                         "size": "768x432", "format": "Png"])
+            if let data = try? await fetch(u) { wide.merge(Parse.wideThumbs(data)) { $1 } }
+        }
+        return sorts.map { s in (s.title, s.games.prefix(12).map { var g = $0; g.wide = wide[g.id]; return g }) }
+    }
 }

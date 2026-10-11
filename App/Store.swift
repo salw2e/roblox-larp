@@ -15,7 +15,7 @@ final class Store: ObservableObject {
     static let avatarFile = dir.appendingPathComponent("avatar.png")
 
     init() {
-        profile = (try? Data(contentsOf: Self.profileFile)).flatMap { try? JSONDecoder().decode(Profile.self, from: $0) } ?? Profile()
+        profile = (try? Data(contentsOf: Self.profileFile)).flatMap(Profile.load) ?? Profile()
         avatar = UIImage(contentsOfFile: Self.avatarFile.path)
     }
 
@@ -44,5 +44,12 @@ final class Store: ObservableObject {
         guard setAvatar(picture) else { throw BloxError.noPicture }
         for i in profile.items.indices { profile.items[i].wearing = false }
         for item in items { profile.wear(item) }
+    }
+
+    func addFriend(_ username: String) async throws {
+        let user = try await Roblox.user(username)
+        let face = try? await Roblox.headshot(user.id)
+        if let i = profile.friendList.firstIndex(where: { $0.id == user.id }) { profile.friendList[i].headshot = face; return }
+        profile.friendList.append(Friend(id: user.id, name: user.name, displayName: user.displayName, headshot: face))
     }
 }

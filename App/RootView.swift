@@ -1,0 +1,429 @@
+import SwiftUI
+import BloxKit
+
+enum MainTab: String, CaseIterable { case home = "Home", moments = "Moments", chat = "Chat", me = "Me" }
+
+enum Page: String, Identifiable {
+    case profile, favorites, friends, inventory
+    var id: String { rawValue }
+}
+
+struct RootView: View {
+    @EnvironmentObject var store: Store
+    @State private var tab = MainTab.home
+    @State private var menu = false
+    @State private var page: Page?
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            VStack(spacing: 0) {
+                Group {
+                    switch tab {
+                    case .home: HomeView(openMenu: openMenu, open: { page = $0 })
+                    case .moments: MomentsView()
+                    case .chat: ChatView()
+                    case .me: AppearanceView(openMenu: openMenu, openProfile: { page = .profile })
+                    }
+                }
+                .frame(maxHeight: .infinity)
+                bar
+            }
+            if menu {
+                Color.black.opacity(0.55).ignoresSafeArea().onTapGesture { withAnimation(.easeOut(duration: 0.2)) { menu = false } }
+                    .accessibilityIdentifier("menuShade")
+                MenuView { p in
+                    withAnimation(.easeOut(duration: 0.2)) { menu = false }
+                    page = p
+                }
+                .transition(.move(edge: .leading))
+            }
+        }
+        .background(Color.bg)
+        .fullScreenCover(item: $page) { p in
+            NavigationStack {
+                switch p {
+                case .profile: ProfileView()
+                case .inventory: FullProfileView().closeButton()
+                case .favorites: FavoritesView().closeButton()
+                case .friends: FriendsListView().closeButton()
+                }
+            }
+            .environmentObject(store)
+        }
+    }
+
+    private func openMenu() { withAnimation(.easeOut(duration: 0.22)) { menu = true } }
+
+    private var bar: some View {
+        HStack {
+            ForEach(MainTab.allCases, id: \.self) { t in
+                Button { tab = t } label: {
+                    VStack(spacing: 5) {
+                        icon(t).frame(height: 30)
+                        Text(t.rawValue).font(.system(size: 14, weight: .medium))
+                    }
+                    .foregroundStyle(tab == t ? Color.white : Color.faint)
+                    .frame(maxWidth: .infinity)
+                }
+                .accessibilityIdentifier("tab-\(t.rawValue)")
+            }
+        }
+        .padding(.top, 8)
+        .background(Color.bg)
+    }
+
+    @ViewBuilder
+    private func icon(_ t: MainTab) -> some View {
+        switch t {
+        case .home: Image(systemName: tab == t ? "house.fill" : "house").font(.system(size: 22))
+        case .moments: Image(systemName: "play.square").font(.system(size: 22)).rotationEffect(.degrees(-10))
+        case .chat: Image(systemName: "text.bubble").font(.system(size: 22))
+        case .me: Headshot(image: store.avatar, crop: store.profile.crop, size: 30)
+        }
+    }
+}
+
+extension View {
+    func closeButton() -> some View { modifier(CloseButton()) }
+}
+
+struct CloseButton: ViewModifier {
+    @Environment(\.dismiss) private var dismiss
+    func body(content: Content) -> some View {
+        content.toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityIdentifier("closePage")
+            }
+        }
+    }
+}
+
+// MARK: - Home
+
+struct HomeView: View {
+    @EnvironmentObject var store: Store
+    let openMenu: () -> Void
+    let open: (Page) -> Void
+    @State private var charts = false
+    @State private var rows: [(title: String, games: [Game])] = []
+    @State private var failure: String?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            topBar
+            tabs
+            ScrollView {
+                if charts { chartsList } else { forYou }
+            }
+            .refreshable { await load() }
+        }
+        .background(Color.bg)
+        .task { if rows.isEmpty { await load() } }
+    }
+
+    private var topBar: some View {
+        HStack(spacing: 22) {
+            Button(action: openMenu) {
+                Image(systemName: "line.3.horizontal").font(.system(size: 24))
+                    .overlay(alignment: .topTrailing) { Circle().fill(Color.bloxBlue).frame(width: 9, height: 9).offset(x: 5, y: -4) }
+            }
+            .accessibilityIdentifier("menuButton")
+            Wordmark(size: 24).padding(.leading, -8)
+            Spacer()
+            Image(systemName: "magnifyingglass").font(.system(size: 23))
+            RobuxIcon(size: 25)
+            Image(systemName: "bell").font(.system(size: 23))
+                .overlay(alignment: .topTrailing) { CountBubble(n: store.profile.notifications, size: 19).offset(x: 10, y: -10) }
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 14)
+    }
+
+    private var tabs: some View {
+        HStack(spacing: 0) {
+            ForEach(["For you", "Charts"], id: \.self) { t in
+                let on = (t == "Charts") == charts
+                Button { charts = t == "Charts" } label: {
+                    VStack(spacing: 12) {
+                        Text(t).font(.system(size: 16)).foregroundStyle(on ? .white : Color.faint)
+                        Rectangle().fill(on ? Color.white : Color(white: 0.25)).frame(height: on ? 1.5 : 1)
+                    }
+                }
+                .accessibilityIdentifier("home-\(t)")
+            }
+        }
+        .padding(.horizontal, 20)
+    }
+
+    private var forYou: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button { open(.profile) } label: {
+                HStack(spacing: 14) {
+                    Headshot(image: store.avatar, crop: store.profile.crop, size: 38)
+                    Text(store.profile.displayName).font(.system(size: 21, weight: .bold))
+                }
+            }
+            .accessibilityIdentifier("homeName")
+            .padding(.top, 22)
+            friends.padding(.top, 22)
+            section("Recommended For You") {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .top), GridItem(.flexible(), alignment: .top)], spacing: 20) {
+                    ForEach(recommended) { WideGameCard(game: $0).accessibilityIdentifier("homeGame") }
+                }
+            }
+            if let failure { Text(failure).foregroundStyle(Color.faint).padding(.top, 12) }
+            if !continueGames.isEmpty {
+                section("Continue  ›") { row(continueGames) }
+            }
+        }
+        .padding(.horizontal, 20).padding(.bottom, 24)
+    }
+
+    private var friends: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: 14) {
+                Button { open(.friends) } label: {
+                    VStack(spacing: 8) {
+                        Circle().fill(Color.field).frame(width: 112, height: 112)
+                            .overlay(Image(systemName: "person.badge.plus").font(.system(size: 36, weight: .light)))
+                            .overlay(alignment: .topTrailing) { CountBubble(n: store.profile.requests, size: 22).offset(x: -4, y: 6) }
+                        Text("Add Friends").font(.system(size: 14, weight: .semibold))
+                    }
+                    .frame(width: 114)
+                }
+                ForEach(store.profile.friendList) { f in
+                    VStack(spacing: 2) {
+                        RemoteCircle(url: f.headshot, size: 112)
+                            .overlay(alignment: .bottomTrailing) {
+                                if f.online {
+                                    Circle().fill(Color.green).frame(width: 22, height: 22)
+                                        .overlay(Circle().stroke(Color.bg, lineWidth: 3)).offset(x: -6, y: -6)
+                                }
+                            }
+                        Text(f.displayName).font(.system(size: 14, weight: .semibold)).lineLimit(1).padding(.top, 6)
+                        if !f.status.isEmpty { Text(f.status).font(.system(size: 13)).foregroundStyle(Color.faint).lineLimit(1) }
+                    }
+                    .frame(width: 114)
+                    .accessibilityIdentifier("homeFriend")
+                }
+            }
+        }
+        .padding(.horizontal, -20).contentMargins(.horizontal, 20)
+    }
+
+    private var chartsList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(rows.indices, id: \.self) { i in
+                section(rows[i].title) { row(rows[i].games) }
+            }
+            if let failure { Text(failure).foregroundStyle(Color.faint).padding(.top, 20) }
+        }
+        .padding(.horizontal, 20).padding(.bottom, 24)
+    }
+
+    private func row(_ games: [Game]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: 12) { ForEach(games) { WideGameCard(game: $0).frame(width: 180) } }
+        }
+        .padding(.horizontal, -20).contentMargins(.horizontal, 20)
+    }
+
+    private func section<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(title).font(.system(size: 22, weight: .bold))
+            content()
+        }
+        .padding(.top, 30)
+    }
+
+    private var recommended: [Game] {
+        Array((rows.first { $0.title == "Top Playing Now" } ?? rows.first)?.games.prefix(6) ?? [])
+    }
+    private var continueGames: [Game] {
+        store.profile.games.isEmpty ? Array(rows.first { $0.title == "Top Revisited" }?.games.prefix(8) ?? []) : store.profile.games
+    }
+
+    private func load() async {
+        failure = nil
+        do {
+            rows = try await Roblox.home()
+            if rows.isEmpty { failure = "Roblox sent nothing to show." }
+        } catch {
+            failure = error.localizedDescription
+        }
+    }
+}
+
+// MARK: - Menu
+
+struct MenuView: View {
+    @EnvironmentObject var store: Store
+    let open: (Page?) -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                Button { open(.profile) } label: {
+                    HStack(spacing: 18) {
+                        Headshot(image: store.avatar, crop: store.profile.crop, size: 64)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(store.profile.displayName).font(.system(size: 17, weight: .bold))
+                            Text("@\(store.profile.username)").font(.system(size: 16)).foregroundStyle(Color(white: 0.85))
+                        }
+                    }
+                }
+                .accessibilityIdentifier("menuProfile")
+                .padding(.top, 10)
+                robuxCard.padding(.top, 14)
+                VStack(alignment: .leading, spacing: 0) {
+                    row("bookmark", "Favorites", page: .favorites)
+                    row("clock.arrow.circlepath", "Continue Playing")
+                    row("person.2", "Friends", count: store.profile.friendsBadge, page: .friends)
+                    row("person.3", "Communities")
+                    row("backpack", "Inventory", page: .inventory)
+                    row("arrow.left.arrow.right", "Trades")
+                    row("envelope", "Messages", count: store.profile.messages)
+                    row("p.square", "Roblox Plus")
+                    row("gearshape", "Settings")
+                    row("lock.shield", "Help & Safety")
+                    Divider().overlay(Color(white: 0.25)).padding(.vertical, 8)
+                    row("play.square", "Moments")
+                    row("graduationcap", "Learn")
+                    row("hammer", "Create")
+                }
+                .padding(.top, 14)
+                Text("Switch Accounts").font(.system(size: 17)).frame(maxWidth: .infinity, minHeight: 50)
+                    .background(Color.field, in: RoundedRectangle(cornerRadius: 10))
+                    .padding(.top, 14).padding(.bottom, 20)
+            }
+            .padding(.horizontal, 18)
+        }
+        .containerRelativeFrame(.horizontal) { w, _ in w * 0.8 }
+        .background(Color(red: 0.06, green: 0.065, blue: 0.08).ignoresSafeArea())
+        .foregroundStyle(.white)
+    }
+
+    private var robuxCard: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                RobuxIcon(size: 20)
+                Text(grouped(store.profile.robux)).font(.system(size: 17, weight: .bold)).accessibilityIdentifier("menuRobux")
+                Spacer()
+                Text("Buy Robux").font(.system(size: 14)).padding(.horizontal, 10).frame(height: 36)
+                    .background(Color.field, in: RoundedRectangle(cornerRadius: 8))
+            }
+            .padding(.horizontal, 14).frame(height: 66)
+            Divider().overlay(Color(white: 0.25))
+            HStack(spacing: 18) {
+                Image(systemName: "p.square").font(.system(size: 18))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("More fun for less Robux.")
+                    Text("Subscribe to Roblox Plus.")
+                }
+                .font(.system(size: 13))
+                Spacer()
+                Image(systemName: "chevron.right")
+            }
+            .padding(.horizontal, 14).frame(height: 64)
+        }
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(white: 0.25), lineWidth: 1))
+    }
+
+    private func row(_ icon: String, _ title: String, count: Int = 0, page: Page? = nil) -> some View {
+        Button { if page != nil { open(page) } } label: {
+            HStack(spacing: 22) {
+                Image(systemName: icon).font(.system(size: 19)).frame(width: 26)
+                Text(title).font(.system(size: 17, weight: .bold))
+                Spacer()
+                CountBubble(n: count, size: 22)
+            }
+            .frame(height: 46)
+            .contentShape(Rectangle())
+        }
+        .accessibilityIdentifier("menu-\(title)")
+    }
+}
+
+// MARK: - Simple pages
+
+struct MomentsView: View {
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "play.square").font(.system(size: 54)).rotationEffect(.degrees(-10))
+            Text("Moments").font(.system(size: 22, weight: .bold))
+            Text("Short clips from experiences show up here.").foregroundStyle(Color.faint)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.bg)
+    }
+}
+
+struct ChatView: View {
+    @EnvironmentObject var store: Store
+    var body: some View {
+        NavigationStack {
+            List {
+                if store.profile.friendList.isEmpty {
+                    Text("Add friends in Edit profile and they show up here.").foregroundStyle(Color.faint)
+                }
+                ForEach(store.profile.friendList) { f in
+                    HStack(spacing: 14) {
+                        RemoteCircle(url: f.headshot, size: 52)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(f.displayName).font(.system(size: 17, weight: .semibold))
+                            Text(f.status.isEmpty ? (f.online ? "Online" : "Offline") : f.status)
+                                .font(.system(size: 14)).foregroundStyle(Color.faint).lineLimit(1)
+                        }
+                    }
+                    .listRowBackground(Color.bg)
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(Color.bg)
+            .navigationTitle("Chat")
+        }
+    }
+}
+
+struct FavoritesView: View {
+    @EnvironmentObject var store: Store
+    var body: some View {
+        ScrollView {
+            if store.profile.games.isEmpty {
+                Text("No favorites yet. Add games in Edit profile.").foregroundStyle(Color.faint).padding(.top, 40)
+            }
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .top), GridItem(.flexible(), alignment: .top)], spacing: 20) {
+                ForEach(store.profile.games) { WideGameCard(game: $0) }
+            }
+            .padding(20)
+        }
+        .background(Color.bg)
+        .navigationTitle("Favorites")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct FriendsListView: View {
+    @EnvironmentObject var store: Store
+    var body: some View {
+        List {
+            Section { Text("\(grouped(store.profile.friends)) Friends").font(.system(size: 17, weight: .semibold)) }
+            ForEach(store.profile.friendList) { f in
+                HStack(spacing: 14) {
+                    RemoteCircle(url: f.headshot, size: 48)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(f.displayName).font(.system(size: 17, weight: .semibold))
+                        Text("@\(f.name)").font(.system(size: 14)).foregroundStyle(Color.faint)
+                    }
+                    Spacer()
+                    if f.online { Circle().fill(Color.green).frame(width: 12, height: 12) }
+                }
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(Color.bg)
+        .navigationTitle("Friends")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}

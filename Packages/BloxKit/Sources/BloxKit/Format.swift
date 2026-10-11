@@ -18,7 +18,17 @@ private func trim(_ d: Double) -> String {
 
 public func priceText(_ price: Int?) -> String {
     guard let price else { return "Off Sale" }
-    return price == 0 ? "Free" : "\(price)"
+    return price == 0 ? "Free" : grouped(price)
+}
+
+public func grouped(_ n: Int) -> String {
+    let digits = String(n.magnitude)
+    var out = ""
+    for (i, c) in digits.enumerated() {
+        if i > 0, (digits.count - i) % 3 == 0 { out.append(",") }
+        out.append(c)
+    }
+    return (n < 0 ? "-" : "") + out
 }
 
 public func number(from text: String) -> Int {

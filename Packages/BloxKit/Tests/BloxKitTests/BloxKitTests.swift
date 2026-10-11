@@ -24,7 +24,13 @@ final class FormatTests: XCTestCase {
     func testPriceAndNumber() {
         XCTAssertEqual(priceText(nil), "Off Sale")
         XCTAssertEqual(priceText(0), "Free")
-        XCTAssertEqual(priceText(3496767), "3496767")
+        XCTAssertEqual(priceText(3496767), "3,496,767")
+        XCTAssertEqual(priceText(31000), "31,000")
+        XCTAssertEqual(priceText(47), "47")
+        XCTAssertEqual(grouped(100), "100")
+        XCTAssertEqual(grouped(1000), "1,000")
+        XCTAssertEqual(grouped(100000), "100,000")
+        XCTAssertEqual(grouped(-1234), "-1,234")
         XCTAssertEqual(number(from: ""), 0)
         XCTAssertEqual(number(from: "55,488"), 55488)
         XCTAssertEqual(number(from: "abc"), 0)
@@ -49,8 +55,18 @@ final class ProfileTests: XCTestCase {
     }
 
     func testOldSaveStillLoads() throws {
-        let p = try JSONDecoder().decode(Profile.self, from: JSONEncoder().encode(Profile()))
-        XCTAssertEqual(p, Profile())
+        XCTAssertEqual(Profile.load(try JSONEncoder().encode(Profile())), Profile())
+        let old = #"{"username":"salw2e","displayName":"salw2e","robux":55488,"friends":1,"followers":5585545,"following":0,"bio":"yo","verified":true,"badge":"pro","crop":{"scale":2.4,"x":0,"y":0.72},"items":[{"id":5,"bundle":false,"name":"Hat","creator":"Roblox","price":0,"wearing":true}],"games":[{"id":1,"name":"G","playing":3}]}"#
+        let p = try XCTUnwrap(Profile.load(Data(old.utf8)))
+        XCTAssertEqual(p.username, "salw2e")
+        XCTAssertEqual(p.followers, 5585545)
+        XCTAssertEqual(p.badge, .pro)
+        XCTAssertEqual(p.wearing.map(\.name), ["Hat"])
+        XCTAssertNil(p.items[0].creatorVerified)
+        XCTAssertNil(p.games[0].rating)
+        XCTAssertEqual(p.friendList, [])
+        XCTAssertEqual(p.notifications, 0)
+        XCTAssertNil(Profile.load(Data("not json".utf8)))
     }
 }
 
@@ -89,6 +105,10 @@ final class ParseTests: XCTestCase {
         XCTAssertEqual(items.count, 30)
         XCTAssertEqual(items.filter(\.bundle).map(\.id), [741196])
         XCTAssertEqual(items.first?.price, 95)
+        XCTAssertEqual(items.filter { $0.creatorVerified == true }.count, 11)
+        XCTAssertTrue(Item(id: 1, name: "x", price: 0).showsCreatorCheck)                     // Roblox's own
+        XCTAssertFalse(Item(id: 1, name: "x", creator: "Asche", price: 0).showsCreatorCheck)
+        XCTAssertFalse(Item(id: 1, name: "x", creator: "Roblox", price: 0, creatorVerified: false).showsCreatorCheck)
         let free = Parse.catalog(try fixture("search-empty"))
         XCTAssertTrue(free.contains { $0.name.hasPrefix("Orange Beanie") && $0.price == 0 })
     }
@@ -99,5 +119,25 @@ final class ParseTests: XCTestCase {
         XCTAssertEqual(games.first?.id, 383310974)
         XCTAssertTrue(games.first?.name.contains("Adopt Me!") ?? false)
         XCTAssertGreaterThan(games.first?.playing ?? 0, 0)
+    }
+
+    func testHomeSorts() throws {
+        let sorts = Parse.sorts(try fixture("sorts"))
+        XCTAssertEqual(sorts.first?.title, "Top Trending")
+        XCTAssertTrue(sorts.contains { $0.title == "Top Playing Now" })
+        let adopt = try XCTUnwrap(sorts.flatMap(\.games).first { $0.id == 383310974 })
+        XCTAssertEqual(adopt.rating, 86)                                  // 9548284 up, 1513588 down
+        XCTAssertGreaterThan(adopt.playing, 0)
+        XCTAssertNil(Parse.rating(up: 0, down: 0))
+        XCTAssertEqual(Parse.rating(up: 94, down: 6), 94)
+        XCTAssertTrue(Parse.sorts(Data("{}".utf8)).isEmpty)
+    }
+
+    func testWideThumbs() throws {
+        let w = Parse.wideThumbs(try fixture("wide-thumbs"))
+        XCTAssertNotNil(w[383310974])
+        XCTAssertNotNil(w[10563114921])
+        XCTAssertNil(w[1])                                                // "Blocked": no picture
+        XCTAssertNotNil(Parse.images(try fixture("headshot"))[156])
     }
 }

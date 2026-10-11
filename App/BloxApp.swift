@@ -11,10 +11,10 @@ struct BloxApp: App {
 
     var body: some Scene {
         WindowGroup {
-            NavigationStack { ProfileView() }
+            RootView()
                 .environmentObject(store)
-                .preferredColorScheme(.light)
-                .tint(.primary)
+                .preferredColorScheme(.dark)
+                .tint(.white)
         }
     }
 }

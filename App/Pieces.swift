@@ -3,8 +3,10 @@ import BloxKit
 
 extension Color {
     static let bloxBlue = Color(red: 0.2, green: 0.37, blue: 1)       // #335FFF, Roblox's button blue
-    static let field = Color(white: 0.94)
-    static let faint = Color(white: 0.45)
+    static let bg = Color(red: 0.07, green: 0.075, blue: 0.09)          // Roblox's dark background
+    static let tile = Color(red: 0.165, green: 0.17, blue: 0.195)       // item and game picture tiles
+    static let field = Color(red: 0.19, green: 0.195, blue: 0.22)
+    static let faint = Color(white: 0.68)
 }
 
 struct RobuxIcon: View {
@@ -48,7 +50,7 @@ struct MemberBadge: View {
     var body: some View {
         switch badge {
         case .none: EmptyView()
-        case .plus: Image(systemName: "plus.square").font(.system(size: size * 0.95, weight: .semibold)).foregroundStyle(Color(white: 0.3))
+        case .plus: Image(systemName: "plus.square").font(.system(size: size * 0.95, weight: .semibold)).foregroundStyle(Color(white: 0.85))
         case .pro:
             ZStack(alignment: .bottomTrailing) {
                 RoundedRectangle(cornerRadius: size * 0.08).stroke(lineWidth: size * 0.13)
@@ -62,7 +64,7 @@ struct MemberBadge: View {
                 .stroke(style: StrokeStyle(lineWidth: size * 0.12))
             }
             .frame(width: size, height: size)
-            .foregroundStyle(Color(white: 0.3))
+            .foregroundStyle(Color(white: 0.85))
         }
     }
 }
@@ -86,7 +88,7 @@ struct AvatarPicture: View {
         if let image {
             Image(uiImage: image).resizable().scaledToFit().accessibilityIdentifier("avatarImage")
         } else {
-            Image(systemName: "figure.stand").resizable().scaledToFit().padding(60).foregroundStyle(Color(white: 0.8))
+            Image(systemName: "figure.stand").resizable().scaledToFit().padding(40).foregroundStyle(Color(white: 0.3))
         }
     }
 }
@@ -97,7 +99,7 @@ struct Headshot: View {
     let size: CGFloat
     var body: some View {
         ZStack {
-            LinearGradient(colors: [Color(white: 0.93), Color(white: 0.82)], startPoint: .top, endPoint: .bottom)
+            LinearGradient(colors: [Color(white: 0.32), Color(white: 0.2)], startPoint: .top, endPoint: .bottom)
             if let image {
                 Image(uiImage: image).resizable().scaledToFit()
                     .frame(width: size * crop.scale, height: size * crop.scale)
@@ -114,7 +116,7 @@ struct Headshot: View {
 struct Thumb: View {
     let url: String?
     var body: some View {
-        RoundedRectangle(cornerRadius: 8).fill(Color.field)
+        RoundedRectangle(cornerRadius: 8).fill(Color.tile)
             .aspectRatio(1, contentMode: .fit)
             .overlay {
                 AsyncImage(url: url.flatMap(URL.init(string:))) { img in
@@ -133,7 +135,7 @@ struct PriceLine: View {
             if let price, price > 0 { RobuxIcon(size: size * 1.05) }
             Text(priceText(price)).font(.system(size: size, weight: .medium))
         }
-        .foregroundStyle(price == 0 ? Color.primary : Color.faint)
+        .foregroundStyle(.primary)
     }
 }
 
@@ -147,7 +149,7 @@ struct ItemCard: View {
             if showCreator {
                 HStack(spacing: 4) {
                     Text(item.creator).foregroundStyle(Color.faint).lineLimit(1)
-                    if item.creator == "Roblox" { VerifiedBadge(size: 13) }
+                    if item.showsCreatorCheck { VerifiedBadge(size: 13) }
                 }
                 .font(.system(size: 13))
             }
@@ -194,5 +196,69 @@ struct NumberField: View {
             .accessibilityIdentifier(id)
             .onAppear { text = "\(value)" }
             .onChange(of: text) { _, t in value = number(from: t) }
+    }
+}
+
+struct WideGameCard: View {
+    let game: Game
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            RoundedRectangle(cornerRadius: 8).fill(Color.tile)
+                .aspectRatio(16 / 9, contentMode: .fit)
+                .overlay {
+                    AsyncImage(url: (game.wide ?? game.icon).flatMap(URL.init(string:))) { $0.resizable().scaledToFill() }
+                        placeholder: { EmptyView() }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            Text(game.name).font(.system(size: 16, weight: .bold)).lineLimit(1).padding(.top, 6)
+            HStack(spacing: 5) {
+                Image(systemName: "hand.thumbsup.fill")
+                Text(game.rating.map { "\($0)% Rating" } ?? "\(short(game.playing)) Playing")
+            }
+            .font(.system(size: 15)).foregroundStyle(Color.faint)
+        }
+    }
+}
+
+struct RemoteCircle: View {
+    let url: String?
+    let size: CGFloat
+    var body: some View {
+        Circle().fill(Color.tile)
+            .overlay {
+                AsyncImage(url: url.flatMap(URL.init(string:))) { $0.resizable().scaledToFill() } placeholder: {
+                    Image(systemName: "person.fill").font(.system(size: size * 0.4)).foregroundStyle(Color.faint)
+                }
+            }
+            .frame(width: size, height: size)
+            .clipShape(Circle())
+    }
+}
+
+struct Wordmark: View {
+    var size: CGFloat = 25
+    var body: some View {
+        HStack(spacing: size * 0.04) {
+            Text("R")
+            RoundedRectangle(cornerRadius: size * 0.08)
+                .frame(width: size * 0.68, height: size * 0.68)
+                .overlay(Rectangle().fill(Color.bg).frame(width: size * 0.2, height: size * 0.2))
+                .rotationEffect(.degrees(-15))
+            Text("BLOX")
+        }
+        .font(.system(size: size, weight: .black, design: .default).width(.expanded))
+        .foregroundStyle(.white)
+    }
+}
+
+struct CountBubble: View {
+    let n: Int
+    var size: CGFloat = 22
+    var body: some View {
+        if n > 0 {
+            Text(n > 99 ? "99+" : "\(n)").font(.system(size: size * 0.62, weight: .semibold)).foregroundStyle(.white)
+                .padding(.horizontal, size * 0.28).frame(minWidth: size, minHeight: size)
+                .background(Color.bloxBlue, in: Capsule())
+        }
     }
 }

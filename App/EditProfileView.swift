@@ -10,6 +10,9 @@ struct EditProfileView: View {
     @State private var copying = false
     @State private var copyStatus = ""
     @State private var photo: PhotosPickerItem?
+    @State private var friendName = ""
+    @State private var addingFriend = false
+    @State private var friendStatus = ""
 
     var body: some View {
         NavigationStack {
@@ -21,11 +24,14 @@ struct EditProfileView: View {
                     badges
                     picture
                     avatarSource
+                    friendsRow
+                    menuCounts
                     gamesLink
                 }
-                .padding(22)
+                .padding(22).padding(.bottom, 280)
             }
             .scrollDismissesKeyboard(.interactively)
+            .background(Color.bg)
             .safeAreaInset(edge: .top, spacing: 0) { titleBar }
             .toolbar(.hidden, for: .navigationBar)
             .toolbar {
@@ -53,7 +59,7 @@ struct EditProfileView: View {
             .padding(.horizontal, 22).padding(.vertical, 14)
             Divider()
         }
-        .background(.white)
+        .background(Color.bg)
     }
 
     private var account: some View {
@@ -152,6 +158,76 @@ struct EditProfileView: View {
             PhotosPicker(selection: $photo, matching: .images) { grayButton("Choose a picture from Photos") }
         }
         .padding(.top, 8)
+    }
+
+    private var friendsRow: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            heading("Friends on Home")
+            caption("Add real Roblox users by username. They show in the friends row on Home and in Chat.")
+            HStack(spacing: 12) {
+                TextField("Roblox username", text: $friendName).field()
+                    .textInputAutocapitalization(.never).autocorrectionDisabled().submitLabel(.go)
+                    .onSubmit(addFriend)
+                    .accessibilityIdentifier("friendUserField")
+                Button(action: addFriend) {
+                    Group { if addingFriend { ProgressView().tint(.white) } else { Text("Add") } }
+                        .font(.system(size: 16, weight: .semibold)).frame(width: 76, height: 40)
+                        .background(Color.bloxBlue, in: RoundedRectangle(cornerRadius: 10)).foregroundStyle(.white)
+                }
+                .disabled(addingFriend || friendName.trimmingCharacters(in: .whitespaces).isEmpty)
+                .accessibilityIdentifier("addFriendButton")
+            }
+            if !friendStatus.isEmpty { caption(friendStatus).accessibilityIdentifier("friendStatus") }
+            ForEach($store.profile.friendList) { $f in
+                HStack(spacing: 10) {
+                    RemoteCircle(url: f.headshot, size: 40)
+                    VStack(alignment: .leading, spacing: 4) {
+                        TextField("Name", text: $f.displayName).font(.system(size: 16, weight: .semibold))
+                        TextField("Status line (the game they're in)", text: $f.status).font(.system(size: 14))
+                    }
+                    Toggle("", isOn: $f.online).labelsHidden().tint(.green)
+                    Button { store.profile.friendList.removeAll { $0.id == f.id } } label: {
+                        Image(systemName: "trash").foregroundStyle(Color.faint)
+                    }
+                }
+                .padding(10).background(Color.field, in: RoundedRectangle(cornerRadius: 10))
+                .accessibilityIdentifier("friendRow")
+            }
+        }
+        .padding(.top, 8)
+    }
+
+    private var menuCounts: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            heading("Badges on Home and the menu")
+            HStack(spacing: 10) {
+                labelled("Bell") { NumberField(value: $store.profile.notifications, id: "notificationsField") }
+                labelled("Add Friends") { NumberField(value: $store.profile.requests, id: "requestsField") }
+            }
+            HStack(spacing: 10) {
+                labelled("Menu: Friends") { NumberField(value: $store.profile.friendsBadge, id: "friendsBadgeField") }
+                labelled("Menu: Messages") { NumberField(value: $store.profile.messages, id: "messagesField") }
+            }
+        }
+        .padding(.top, 8)
+    }
+
+    private func addFriend() {
+        let name = friendName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty, !addingFriend else { return }
+        hideKeyboard()
+        addingFriend = true
+        friendStatus = ""
+        Task {
+            do {
+                try await store.addFriend(name)
+                friendStatus = "Added \(name)."
+                friendName = ""
+            } catch {
+                friendStatus = error.localizedDescription
+            }
+            addingFriend = false
+        }
     }
 
     private var gamesLink: some View {

@@ -35,13 +35,13 @@ public enum Parse {
 
     public static func catalog(_ data: Data) -> [Item] {
         struct R: Decodable {
-            struct I: Decodable { let id: Int64; let itemType: String; let name: String; let creatorName: String?; let price: Int?; let lowestPrice: Int? }
+            struct I: Decodable { let id: Int64; let itemType: String; let name: String; let creatorName: String?; let price: Int?; let lowestPrice: Int?; let creatorHasVerifiedBadge: Bool? }
             let data: [I]
         }
         guard let r = try? JSONDecoder().decode(R.self, from: data) else { return [] }
         return r.data.map {
             Item(id: $0.id, bundle: $0.itemType == "Bundle", name: $0.name, creator: $0.creatorName ?? "Roblox",
-                 price: $0.price ?? $0.lowestPrice)
+                 price: $0.price ?? $0.lowestPrice, creatorVerified: $0.creatorHasVerifiedBadge)
         }
     }
 
@@ -56,5 +56,37 @@ public enum Parse {
             guard let id = c.universeId, let name = c.name else { return nil }
             return Game(id: id, name: name, playing: c.playerCount ?? 0)
         }
+    }
+
+    public static func sorts(_ data: Data) -> [(title: String, games: [Game])] {
+        struct R: Decodable {
+            struct S: Decodable { let sortDisplayName: String?; let games: [G]? }
+            struct G: Decodable { let universeId: Int64; let name: String; let playerCount: Int?; let totalUpVotes: Int?; let totalDownVotes: Int? }
+            let sorts: [S]
+        }
+        guard let r = try? JSONDecoder().decode(R.self, from: data) else { return [] }
+        return r.sorts.compactMap { s in
+            guard let games = s.games, !games.isEmpty else { return nil }
+            return (s.sortDisplayName ?? "", games.map { g in
+                Game(id: g.universeId, name: g.name, playing: g.playerCount ?? 0,
+                     rating: rating(up: g.totalUpVotes ?? 0, down: g.totalDownVotes ?? 0))
+            })
+        }
+    }
+
+    public static func rating(up: Int, down: Int) -> Int? {
+        up + down == 0 ? nil : Int((Double(up) * 100 / Double(up + down)).rounded())
+    }
+
+    public static func wideThumbs(_ data: Data) -> [Int64: String] {
+        struct R: Decodable {
+            struct U: Decodable { let universeId: Int64; let thumbnails: [T]? }
+            struct T: Decodable { let state: String; let imageUrl: String? }
+            let data: [U]
+        }
+        guard let r = try? JSONDecoder().decode(R.self, from: data) else { return [:] }
+        var out: [Int64: String] = [:]
+        for u in r.data { out[u.universeId] = u.thumbnails?.first { $0.state == "Completed" }?.imageUrl }
+        return out
     }
 }

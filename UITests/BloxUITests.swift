@@ -10,8 +10,16 @@ final class BloxUITests: XCTestCase {
 
     func testEveryScreen() throws {
         app.launch()
-        XCTAssertTrue(app.buttons["editProfile"].waitForExistence(timeout: 10))
-        shot("01 new profile")
+        XCTAssertTrue(app.buttons["tab-Home"].waitForExistence(timeout: 10))
+        XCTAssertTrue(any("homeGame").waitForExistence(timeout: 40), "Home shows Roblox's games")
+        sleep(4)   // let the pictures arrive
+        shot("01 home new")
+
+        app.buttons["menuButton"].tap()
+        XCTAssertTrue(app.buttons["menuProfile"].waitForExistence(timeout: 5))
+        shot("02 menu new")
+        app.buttons["menuProfile"].tap()
+        XCTAssertTrue(app.buttons["editProfile"].waitForExistence(timeout: 5))
 
         app.buttons["editProfile"].tap()
         type("salw2e", into: app.textFields["usernameField"])
@@ -24,15 +32,27 @@ final class BloxUITests: XCTestCase {
         reveal(app.buttons["verifiedToggle"])
         app.buttons["verifiedToggle"].tap()
         app.buttons["badge-pro"].tap()
-        shot("02 edit profile")
+        shot("03 edit profile")
 
-        reveal(app.textFields["copyUserField"])
         type("builderman", into: app.textFields["copyUserField"])
+        dismissKeyboard()
         app.buttons["copyButton"].tap()
         let status = app.staticTexts["copyStatus"]
         XCTAssertTrue(status.waitForExistence(timeout: 60))
         XCTAssertTrue(status.label.hasPrefix("Copied builderman"), status.label)
-        shot("03 avatar copied")
+        shot("04 avatar copied")
+
+        type("roblox", into: app.textFields["friendUserField"])
+        dismissKeyboard()
+        app.buttons["addFriendButton"].tap()
+        let added = app.staticTexts["friendStatus"]
+        XCTAssertTrue(added.waitForExistence(timeout: 30))
+        XCTAssertTrue(added.label.hasPrefix("Added"), added.label)
+        type("11", into: app.textFields["notificationsField"])
+        type("8", into: app.textFields["requestsField"])
+        type("51", into: app.textFields["friendsBadgeField"])
+        type("13", into: app.textFields["messagesField"])
+        shot("05 friends and badges")
 
         reveal(app.buttons["manageGames"])
         app.buttons["manageGames"].tap()
@@ -42,8 +62,8 @@ final class BloxUITests: XCTestCase {
         search.typeText("adopt me\n")
         XCTAssertTrue(app.buttons["addGame"].firstMatch.waitForExistence(timeout: 30))
         app.buttons["addGame"].firstMatch.tap()
-        XCTAssertTrue(app.descendants(matching: .any)["chosenGame"].firstMatch.waitForExistence(timeout: 3))
-        shot("04 games")
+        XCTAssertTrue(any("chosenGame").waitForExistence(timeout: 3))
+        shot("06 games")
         app.navigationBars.buttons.element(boundBy: 0).tap()
         app.buttons["closeEdit"].tap()
 
@@ -53,47 +73,71 @@ final class BloxUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["displayName"].label, "salw2e")
         XCTAssertEqual(app.staticTexts["username"].label, "@salw2e")
         XCTAssertTrue(app.images["avatarImage"].exists)
-        XCTAssertGreaterThan(app.descendants(matching: .any).matching(identifier: "wornItem").count, 0)
-        shot("05 profile")
-        app.swipeUp(velocity: .slow)
-        shot("06 profile lower")
+        XCTAssertTrue(any("wornItem").exists)
+        sleep(2)
+        shot("07 profile")
+        reveal(app.buttons["viewFullProfile"])
+        shot("08 profile lower")
+        app.buttons["viewFullProfile"].tap()
+        sleep(2)
+        shot("09 full profile")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
         app.swipeDown(velocity: .fast)
+        app.buttons["closeProfile"].tap()
 
-        app.buttons["editAppearance"].tap()
-        XCTAssertTrue(app.descendants(matching: .any)["robuxPill"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.descendants(matching: .any)["robuxPill"].label.contains("55.5K"))
+        XCTAssertTrue(any("homeFriend").waitForExistence(timeout: 5))
+        sleep(2)
+        shot("10 home")
+        app.buttons["home-Charts"].tap()
+        sleep(2)
+        shot("11 charts")
+
+        app.buttons["menuButton"].tap()
+        XCTAssertTrue(app.staticTexts["menuRobux"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["menuRobux"].label, "55,488")
+        shot("12 menu")
+        app.buttons["menu-Inventory"].tap()
+        XCTAssertTrue(app.buttons["closePage"].waitForExistence(timeout: 5))
+        shot("13 inventory")
+        app.buttons["closePage"].tap()
+
+        app.buttons["tab-Me"].tap()
+        XCTAssertTrue(any("robuxPill").waitForExistence(timeout: 5))
+        XCTAssertTrue(any("robuxPill").label.contains("55.5K"), any("robuxPill").label)
         let first = app.buttons["catalogItem"].firstMatch
-        XCTAssertTrue(first.waitForExistence(timeout: 30))
-        sleep(3)
-        shot("07 marketplace")
+        XCTAssertTrue(first.waitForExistence(timeout: 40))
+        sleep(4)
+        shot("14 marketplace")
         first.tap()
         XCTAssertTrue(app.buttons["wearButton"].waitForExistence(timeout: 5))
-        shot("08 item")
+        shot("15 item")
         app.buttons["wearButton"].tap()
         app.buttons["tab-Customize"].tap()
         XCTAssertTrue(app.buttons["inventoryItem"].firstMatch.waitForExistence(timeout: 5))
-        shot("09 customize")
-        app.buttons["appearanceBack"].tap()
+        shot("16 customize")
 
-        reveal(app.buttons["viewFullProfile"])
-        app.buttons["viewFullProfile"].tap()
-        sleep(2)
-        shot("10 full profile")
+        app.buttons["tab-Chat"].tap()
+        sleep(1)
+        shot("17 chat")
 
         app.terminate()
         app.launchArguments = []
         app.launch()
-        XCTAssertTrue(app.staticTexts["followersChip"].waitForExistence(timeout: 10))
-        XCTAssertEqual(app.staticTexts["followersChip"].label, "5.6M Followers")
-        XCTAssertTrue(app.images["avatarImage"].exists)
+        XCTAssertTrue(app.buttons["menuButton"].waitForExistence(timeout: 10))
+        app.buttons["menuButton"].tap()
+        XCTAssertTrue(app.staticTexts["menuRobux"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["menuRobux"].label, "55,488")
     }
 
+    private func any(_ id: String) -> XCUIElement { app.descendants(matching: .any)[id].firstMatch }
+
     private func type(_ text: String, into field: XCUIElement) {
-        dismissKeyboard()
         reveal(field)
         field.tap()
         let old = (field.value as? String) ?? ""
-        if !old.isEmpty { field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count)) }
+        if !old.isEmpty, old != field.placeholderValue {
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count))
+        }
         field.typeText(text)
     }
 
@@ -111,10 +155,12 @@ final class BloxUITests: XCTestCase {
     }
 
     private func reveal(_ element: XCUIElement) {
-        for _ in 0..<12 {
-            if element.exists && element.isHittable && element.frame.maxY < app.windows.firstMatch.frame.height * 0.6 { return }
+        dismissKeyboard()
+        let limit = app.windows.firstMatch.frame.height * 0.55
+        for _ in 0..<14 {
+            if element.exists && element.isHittable && element.frame.maxY < limit { return }
             app.swipeUp(velocity: .slow)
         }
-        XCTAssertTrue(element.isHittable, "could not scroll to \(element)")
+        XCTAssertTrue(element.exists && element.isHittable, "could not scroll to \(element)")
     }
 }
