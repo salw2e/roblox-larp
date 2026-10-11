@@ -80,55 +80,106 @@ struct RobuxAmount: View {
 
 struct RobuxPage: View {
     @EnvironmentObject var store: Store
-    let open: (Page) -> Void
+    let close: () -> Void
     @State private var buying: (robux: Int, price: String)?
-    private let packs: [(Int, String)] = [(400, "$4.99"), (800, "$9.99"), (1_700, "$19.99"), (4_500, "$49.99"), (10_000, "$99.99"), (22_500, "$199.99")]
+    @State private var sending = false
+    private let packs: [(Int, String)] = [(22_500, "$199.99"), (10_000, "$99.99"), (4_500, "$49.99"), (3_150, "$34.99"),
+                                          (1_700, "$19.99"), (1_200, "$14.99"), (800, "$9.99"), (400, "$4.99"), (80, "$0.99"), (40, "$0.49")]
+    private static let panel = Color(red: 25 / 255, green: 26 / 255, blue: 31 / 255)
+    private static let key = Color(red: 49 / 255, green: 49 / 255, blue: 59 / 255)
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("My Balance").font(.builder(14.5)).foregroundStyle(Color.faint)
-                HStack(spacing: 8) {
-                    Icon("robux", size: 34)
-                    Text(grouped(store.profile.robux)).font(.builder(32, .bold)).accessibilityIdentifier("robuxBalance")
-                }
-                .padding(.top, 6)
-                Button { open(.transactions) } label: {
-                    HStack {
-                        Text("My Transactions").font(.builder(16, .medium))
-                        Spacer()
-                        Icon("chevron-large-right", size: 18)
-                    }
-                    .padding(.horizontal, 16).frame(height: 52).background(Color.tile, in: RoundedRectangle(cornerRadius: 8))
-                }
-                .buttonStyle(PressStyle())
-                .accessibilityIdentifier("myTransactions")
-                .padding(.top, 20)
-                Text("Buy Robux").font(.builder(20, .bold)).frame(height: 24).padding(.top, 28).padding(.bottom, 12)
-                ForEach(packs, id: \.0) { pack in
-                    HStack {
-                        RobuxAmount(amount: pack.0, size: 17, weight: .bold)
-                        Spacer()
-                        Button { buying = pack } label: {
-                            Text(pack.1).font(.builder(14.5, .bold)).frame(width: 88, height: 36)
-                                .background(Color.bloxBlue, in: RoundedRectangle(cornerRadius: 8)).foregroundStyle(.white)
+        VStack(spacing: 0) {
+            bar
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("Buy Robux").font(.builder(45, .bold)).padding(.top, 12)
+                    Text("Robux packages").font(.builder(19.5, .bold)).padding(.top, 36)
+                    (Text("By purchasing Robux, you agree to our ")
+                        + Text("Terms of Use").font(.builder(12, .bold)).foregroundColor(Color.ink)
+                        + Text(", including the arbitration clause and revocation policy."))
+                        .font(.builder(12)).foregroundStyle(Color.faint).lineSpacing(2.5).padding(.top, 4)
+                    VStack(spacing: 20) { ForEach(packs, id: \.0) { row($0) } }
+                        .padding(.vertical, 19.5).padding(.leading, 22).padding(.trailing, 20)
+                        .background(Self.panel, in: RoundedRectangle(cornerRadius: 16))
+                        .padding(.top, 15)
+                    NavigationLink(value: Page.transactions) {
+                        HStack {
+                            Text("My Transactions").font(.builder(16, .medium))
+                            Spacer()
+                            Icon("chevron-large-right", size: 18)
                         }
-                        .buttonStyle(PressStyle())
-                        .accessibilityIdentifier("buyRobux-\(pack.0)")
+                        .padding(.horizontal, 16).frame(height: 52).background(Self.panel, in: RoundedRectangle(cornerRadius: 8))
                     }
-                    .frame(height: 60)
-                    Divider().overlay(Color.tile)
+                    .buttonStyle(PressStyle())
+                    .accessibilityIdentifier("myTransactions")
+                    .padding(.top, 24)
                 }
+                .padding(.horizontal, 20).padding(.bottom, 24)
             }
-            .padding(20)
         }
-        .page("Robux")
+        .background(Color.bg.ignoresSafeArea(edges: .bottom))
+        .background(Color.black.ignoresSafeArea())
+        .toolbar(.hidden, for: .navigationBar)
+        .navigationDestination(for: Page.self) { _ in TransactionsPage() }
         .alert("Buy Robux", isPresented: Binding(get: { buying != nil }, set: { if !$0 { buying = nil } })) {
             Button("Buy") { if let buying { store.profile.topUp(buying.robux) } }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(buying.map { "\(grouped($0.robux)) Robux for \($0.price). Nothing is charged: this adds them to your pretend balance." } ?? "")
         }
+        .alert("Send Robux", isPresented: $sending) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Sending Robux isn't available on this account.")
+        }
+    }
+
+    private var bar: some View {
+        HStack(spacing: 0) {
+            Button(action: close) { Icon("x", size: 22).frame(width: 44, height: 44) }
+                .accessibilityIdentifier("robuxClose").accessibilityLabel("Close")
+                .padding(.leading, 18)
+            Icon("robux", size: 20).padding(.leading, 18)
+            Text(grouped(store.profile.robux)).font(.builder(20, .bold)).padding(.leading, 6)
+                .accessibilityIdentifier("robuxBalance")
+            Spacer()
+            Button { sending = true } label: {
+                HStack(spacing: 6) {
+                    Icon("arrow-up-from-line", size: 15)
+                    Text("Send").font(.builder(12, .medium))
+                }
+                .frame(width: 68, height: 32).background(Self.key, in: RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(PressStyle())
+            .padding(.trailing, 20)
+        }
+        .foregroundStyle(Color.ink)
+        .frame(height: 56)
+        .background(Self.panel)
+    }
+
+    private func row(_ pack: (Int, String)) -> some View {
+        HStack(spacing: 0) {
+            Icon("robux", size: 21)
+            Text(grouped(pack.0)).font(.builder(23.3, .bold)).padding(.leading, 6)
+            if pack.0 == 80 {
+                HStack(spacing: 4) {
+                    Icon("circle-star", size: 12)
+                    Text("For you").font(.builder(12, .medium))
+                }
+                .padding(.horizontal, 9).frame(height: 24).background(Color.tile, in: Capsule()).padding(.leading, 9)
+            }
+            Spacer()
+            Button { buying = pack } label: {
+                Text(pack.1).font(.builder(13.5, .bold)).foregroundStyle(.white)
+                    .frame(width: 120, height: 40)
+                    .background(pack.0 == 80 ? Color.bloxBlue : Self.key, in: RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(PressStyle())
+            .accessibilityIdentifier("buyRobux-\(pack.0)")
+        }
+        .frame(height: 40)
     }
 }
 

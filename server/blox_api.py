@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import collections, gzip, hashlib, http.server, json, os, re, shutil, sys, threading, time
 import urllib.error, urllib.parse, urllib.request
+import numpy as np
 
 COOKIE_FILE = os.environ.get("ROBLOX_COOKIE_FILE", "cookie.txt")
 CACHE = os.environ.get("BLOX_CACHE", "cache")
@@ -130,9 +131,40 @@ def plain_mtl(mtl, names):
         out.append("")
     return "\n".join(out)
 
+def upright(obj, toward_camera):
+    lines = obj.split("\n")
+    v = np.array([[float(x) for x in l.split()[1:4]] for l in lines if l.startswith("v ")])
+    body, group = set(), ""
+    for l in lines:
+        if l.startswith("g "):
+            group = l[2:].strip()
+        elif l.startswith("f ") and group.startswith("Player"):
+            body.update(int(c.split("/")[0]) - 1 for c in l.split()[1:])
+    pts = v[sorted(i for i in body if 0 <= i < len(v))] if body else v
+    if len(pts) < 4:
+        return obj
+    _, axes = np.linalg.eigh(np.cov((pts - pts.mean(0)).T))
+    front = axes[:, 0] * (1 if axes[:, 0] @ toward_camera >= 0 else -1)
+    up = np.array([0.0, 1.0, 0.0]) - front[1] * front
+    if np.linalg.norm(up) < 0.5:
+        return obj
+    up /= np.linalg.norm(up)
+    side = np.cross(up, front)
+    turn = np.array([[-1, 0, 0], [0, 1, 0], [0, 0, -1]]) @ np.array([side, up, front])   # side->-X, up->+Y, front->-Z
+    if np.allclose(turn, np.eye(3), atol=0.002):
+        return obj
+    out = []
+    for l in lines:
+        if l.startswith("v ") or l.startswith("vn "):
+            head, *xyz = l.split()
+            r = turn @ np.array([float(x) for x in xyz[:3]])
+            l = f"{head} {r[0]:.6g} {r[1]:.6g} {r[2]:.6g}"
+        out.append(l)
+    return "\n".join(out)
+
 def store_model(description_url):
     d = json.loads(download(description_url))
-    key = hashlib.sha1("|".join([d["obj"], d["mtl"]] + d.get("textures", [])).encode()).hexdigest()[:20]
+    key = hashlib.sha1("|".join(["up1", d["obj"], d["mtl"]] + d.get("textures", [])).encode()).hexdigest()[:20]
     folder = os.path.join(CACHE, key)
     names = {h: f"tex{i}.png" for i, h in enumerate(d.get("textures", []))}
     with store_lock:
@@ -150,6 +182,8 @@ def fetch_model(d, folder, names):
         obj = re.sub(r"(?m)^mtllib .*$", "mtllib a.mtl", obj)
         if "mtllib" not in obj:
             obj = "mtllib a.mtl\n" + obj
+        cam = (d.get("camera") or {}).get("direction") or {}
+        obj = upright(obj, np.array([cam.get("x", 0), cam.get("y", 0), cam.get("z", -1)], dtype=float))
         open(os.path.join(tmp, "a.obj"), "w").write(obj)
         open(os.path.join(tmp, "a.mtl"), "w").write(plain_mtl(download(cdn(d["mtl"])).decode("utf-8", "replace"), names))
         for h, name in names.items():
@@ -318,6 +352,19 @@ def demo():
     m = plain_mtl("newmtl A\nKa 0.5 0.5 0.5\nKd 0.5 0.5 0.5\nKs 0.1 0.1 0.1\nmap_Ka H1\nmap_Kd H1\nmap_d H1\n\nnewmtl B\nKd 0.2 0.3 0.4\n", {"H1": "tex0.png"})
     assert "map_Kd tex0.png" in m and "map_d" not in m and "map_Ka" not in m
     assert "Kd 1 1 1" in m.split("newmtl B")[0] and "Kd 0.2 0.3 0.4" in m.split("newmtl B")[1]     # plain colours survive
+    box = [(x, y, z) for x in (-1, 1) for y in (-2, 2) for z in (-0.5, 0.5)]
+    a = 0.3
+    lean = np.array([[np.cos(a), -np.sin(a), 0], [np.sin(a), np.cos(a), 0], [0, 0, 1]])
+    yaw = np.array([[0, 0, 1], [0, 1, 0], [-1, 0, 0]])                   # -Z (front) becomes -X
+    turned = [lean @ yaw @ np.array(p) for p in box]
+    text = "\n".join(["g Handle1", "v 9 9 9", "g Player1"] + [f"v {p[0]} {p[1]} {p[2]}" for p in turned] +
+                     ["vn %g %g %g" % tuple(lean @ yaw @ np.array([0, 0, -1]))] + ["g Player1", "f 2/1/1 3/1/1 4/1/1 5/1/1", "f 6/1/1 7/1/1 8/1/1 9/1/1", "g Handle1", "f 1/1/1 1/1/1 1/1/1"])
+    back = np.array([[float(x) for x in l.split()[1:]] for l in upright(text, lean @ yaw @ np.array([0.3, 0.2, -1])).split("\n") if l.startswith("v ")])
+    assert np.allclose(np.sort(np.abs(back[1:]), 0), np.sort(np.abs(np.array(box)), 0), atol=1e-4), back
+    assert np.ptp(back[1:, 1]) > 3.9 and np.ptp(back[1:, 2]) < 1.1                     # stands up, thin front to back
+    normal = [l for l in upright(text, lean @ yaw @ np.array([0.3, 0.2, -1])).split("\n") if l.startswith("vn ")][0]
+    assert np.allclose([float(x) for x in normal.split()[1:]], [0, 0, -1], atol=1e-4), normal        # front faces -Z
+    assert upright("g Player1\n" + "\n".join(f"v {p[0]} {p[1]} {p[2]}" for p in box) + "\nf 1 2 3 4\nf 5 6 7 8", np.array([0, 0.3, -1.0])).startswith("g Player1\nv -1 -2")  # already right: untouched
     user = look_of_user("builderman")
     assert user["definition"]["bodyColors"]["headColor"].startswith("#") and user["model"]["obj"].endswith("/a.obj")
     assert user["image"].startswith("https://")

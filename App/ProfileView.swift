@@ -207,6 +207,8 @@ struct FullProfileView: View {
     @State private var flat = false            // the 3D switch turned off
     @State private var wholeBio = false
     @State private var showingCode = false
+    @State private var creations = false       // the Creations tab
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         let p = store.profile
@@ -268,47 +270,94 @@ struct FullProfileView: View {
                     .accessibilityIdentifier("fullMore").accessibilityLabel("More")
                 }
                 .padding(.top, 24)
-                section("Currently Wearing") {
-                    if p.wearing.isEmpty { Text("Nothing yet.").font(.builder(14.5)).foregroundStyle(Color.faint) }
-                    row { ForEach(p.wearing) { item in Button { open(.item(item)) } label: { ItemCard(item: item).frame(width: 108) } } }
-                }
-                if !p.experiences.isEmpty {
-                    section("Experiences") {
-                        row { ForEach(p.experiences) { g in Button { open(.game(g)) } label: { WideGameCard(game: g).frame(width: 170) } } }
+                tabs
+                if creations {
+                    if p.experiences.isEmpty {
+                        Text("No creations yet.").font(.builder(14.5)).foregroundStyle(Color.faint).padding(.leading, 16).padding(.top, 28)
+                    } else {
+                        section("Experiences") {
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3), spacing: 16) {
+                                ForEach(p.experiences) { g in Button { open(.game(g)) } label: { GameCard(game: g) } }
+                            }
+                            .padding(.trailing, 16)
+                        }
                     }
-                }
-                if !p.games.isEmpty {
-                    section("Favorites", page: .favorites) {
-                        row { ForEach(p.games) { g in Button { open(.game(g)) } label: { GameCard(game: g).frame(width: 108) } } }
+                } else {
+                    section("Currently Wearing") {
+                        if p.wearing.isEmpty { Text("Nothing yet.").font(.builder(14.5)).foregroundStyle(Color.faint) }
+                        row { ForEach(p.wearing) { item in Button { open(.item(item)) } label: { ItemCard(item: item).frame(width: 108) }.accessibilityIdentifier("fullWorn") } }
                     }
-                }
-                if !p.friendList.isEmpty {
-                    section("Friends (\(grouped(max(p.friends, p.friendList.count))))", page: .friends) {
-                        row {
-                            ForEach(p.friendList) { f in
-                                Button { open(.friend(f.id)) } label: {
-                                    VStack(spacing: 6) {
-                                        RemoteCircle(url: f.headshot, size: 84)
-                                        Text(f.displayName).font(.builder(12)).lineLimit(1)
+                    if !p.games.isEmpty {
+                        section("Favorites", page: .favorites) {
+                            row { ForEach(p.games) { g in Button { open(.game(g)) } label: { GameCard(game: g).frame(width: 108) } } }
+                        }
+                    }
+                    if !p.friendList.isEmpty {
+                        section("Friends (\(grouped(max(p.friends, p.friendList.count))))", page: .friends) {
+                            row {
+                                ForEach(p.friendList) { f in
+                                    Button { open(.friend(f.id)) } label: {
+                                        VStack(spacing: 6) {
+                                            RemoteCircle(url: f.headshot, size: 84)
+                                            Text(f.displayName).font(.builder(12)).lineLimit(1)
+                                        }
+                                        .frame(width: 88)
                                     }
-                                    .frame(width: 88)
                                 }
                             }
                         }
                     }
-                }
-                if !collectibles.isEmpty {
-                    section("Collections", page: .inventory) {
-                        row { ForEach(collectibles) { item in Button { open(.item(item)) } label: { ItemCard(item: item).frame(width: 108) } } }
+                    if !collectibles.isEmpty {
+                        section("Collections", page: .inventory) {
+                            row { ForEach(collectibles) { item in Button { open(.item(item)) } label: { ItemCard(item: item).frame(width: 108) } } }
+                        }
                     }
                 }
             }
-            .padding(.horizontal, 15).padding(.top, 16).padding(.bottom, 30)
+            .padding(.horizontal, 15).padding(.top, 40).padding(.bottom, 30)
             .buttonStyle(PressStyle())
         }
-        .page("Profile")
+        .background(Color.bg)
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) { header }
         .sheet(isPresented: $editing) { EditProfileView() }
         .sheet(isPresented: $showingCode) { ProfileCode() }
+    }
+
+    private var header: some View {
+        ZStack {
+            Text("Profile").font(.builder(23.5, .bold))
+            HStack {
+                Button { dismiss() } label: { Icon("x", size: 24).frame(width: 44, height: 44) }
+                    .accessibilityIdentifier("fullProfileClose").accessibilityLabel("Close")
+                Spacer()
+            }
+            .padding(.leading, 20)
+        }
+        .frame(height: 54)
+        .frame(maxWidth: .infinity)
+        .background(Color.rgb(36, 37, 39).ignoresSafeArea(edges: .top))
+    }
+
+    private var tabs: some View {
+        HStack(spacing: 0) {
+            ForEach(["About", "Creations"], id: \.self) { t in
+                let on = (t == "Creations") == creations
+                Button { withAnimation(.easeOut(duration: 0.2)) { creations = t == "Creations" } } label: {
+                    Text(t).font(.builder(14.2, .medium)).foregroundStyle(on ? Color.ink : Color.dim)
+                        .frame(maxWidth: .infinity).frame(height: 48).contentShape(Rectangle())
+                }
+                .accessibilityIdentifier("profileTab-\(t)")
+            }
+        }
+        .overlay(alignment: .bottom) {
+            HStack(spacing: 0) {
+                Rectangle().fill(creations ? Color.tile : Color.ink).frame(height: creations ? 1 : 2)
+                Rectangle().fill(creations ? Color.ink : Color.tile).frame(height: creations ? 2 : 1)
+            }
+            .frame(height: 2, alignment: .bottom)
+        }
+        .padding(.top, 15)
     }
 
     private func chip(_ text: String) -> some View {

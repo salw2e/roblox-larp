@@ -113,7 +113,12 @@ final class BloxUITests: XCTestCase {
         app.buttons["toggle3D"].tap()
         XCTAssertTrue(app.images["avatarImage"].waitForExistence(timeout: 3))
         app.buttons["toggle3D"].tap()
-        back()
+        app.buttons["profileTab-Creations"].tap()
+        XCTAssertFalse(any("fullWorn").exists)
+        shot("09a creations")
+        app.buttons["profileTab-About"].tap()
+        XCTAssertTrue(any("fullWorn").waitForExistence(timeout: 3))
+        app.buttons["fullProfileClose"].tap()
         XCTAssertTrue(app.buttons["closeProfile"].waitForExistence(timeout: 5), "the profile is still there after going back")
         app.buttons["profileCode"].tap()           // the QR button shows a code
         XCTAssertTrue(any("profileCodeImage").waitForExistence(timeout: 3))
@@ -153,7 +158,7 @@ final class BloxUITests: XCTestCase {
         XCTAssertTrue(any("ledger-Currency Purchases").label.contains("400"), any("ledger-Currency Purchases").label)
         shot("10c transactions")
         back()
-        back()
+        app.buttons["robuxClose"].tap()
 
         app.buttons["homeGame"].firstMatch.tap()
         XCTAssertTrue(app.buttons["playButton"].waitForExistence(timeout: 5))

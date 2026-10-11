@@ -9,6 +9,7 @@ struct RootView: View {
     @State private var menu = false
     @State private var path: [Page] = []        // pages pushed over the tabs
     @State private var settings = false
+    @State private var robux = false
     @State private var profileOpen = false
     @State private var profileFull = false      // dragged up to fill the screen
     @State private var profileAtTop = true
@@ -23,20 +24,20 @@ struct RootView: View {
                 .navigationDestination(for: Page.self, destination: destination)
         }
         .sheet(isPresented: $settings) { EditProfileView() }
+        .fullScreenCover(isPresented: $robux) { NavigationStack { RobuxPage { robux = false } } }
         .task { await store.refreshSaved() }
     }
 
     @ViewBuilder
     private func destination(_ p: Page) -> some View {
         switch p {
-        case .profile, .settings, .momentsTab: EmptyView()
+        case .profile, .settings, .momentsTab, .robux: EmptyView()
         case .fullProfile: FullProfileView(open: { open($0) }) { path.removeAll(); profileOpen = false; tab = .me }
         case .inventory: InventoryPage(open: { open($0) })
         case .favorites: GamesPage(title: "Favorites", games: store.profile.games, empty: "No favorites yet. Open a game and tap Favorite.", open: { open($0) })
         case .continuePlaying: GamesPage(title: "Continue Playing", games: store.profile.games, empty: "Games you favorite show up here.", open: { open($0) })
         case .friends: FriendsListView(open: { open($0) })
         case .friend(let id): FriendPage(id: id, open: { open($0) })
-        case .robux: RobuxPage(open: { open($0) })
         case .transactions: TransactionsPage()
         case .notifications: NotificationsPage()
         case .trades: TradesPage(open: { open($0) })
@@ -103,6 +104,8 @@ struct RootView: View {
             withAnimation(Self.sheetRise) { profileOpen = true }
         case .settings:
             settings = true
+        case .robux:
+            robux = true
         case .momentsTab:
             profileOpen = false
             tab = .moments
@@ -293,7 +296,7 @@ struct HomeView: View {
     private var status: some View {
         if rows.isEmpty, loading {
             ProgressView().tint(Color.faint).frame(maxWidth: .infinity).padding(.top, 20)
-        } else if let failure {
+        } else if rows.isEmpty, let failure {
             Text(failure).font(.builder(14.5)).foregroundStyle(Color.faint).padding(.top, 12).accessibilityIdentifier("homeFailure")
         }
     }
