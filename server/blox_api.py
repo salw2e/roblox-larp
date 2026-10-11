@@ -1,25 +1,56 @@
 #!/usr/bin/env python3
-import gzip, hashlib, http.server, json, os, re, shutil, sys, time, urllib.error, urllib.parse, urllib.request
+import collections, gzip, hashlib, http.server, json, os, re, shutil, sys, threading, time
+import urllib.error, urllib.parse, urllib.request
 
-COOKIE = open(os.environ.get("ROBLOX_COOKIE_FILE", "cookie.txt")).read().strip()
+COOKIE_FILE = os.environ.get("ROBLOX_COOKIE_FILE", "cookie.txt")
 CACHE = os.environ.get("BLOX_CACHE", "cache")
 PUBLIC = os.environ.get("BLOX_PUBLIC", "")
 UA = "Mozilla/5.0"
 csrf = ""
+BUDGET_FILE = os.path.join(CACHE, "budget.json")
+TYPES_FILE = os.path.join(CACHE, "types.json")
 budget = {"left": None, "reset_at": 0.0}
+asset_types = {}
+render_lock = threading.Lock()
+store_lock = threading.Lock()
+calls = collections.deque()
+CALLS_PER_HOUR = 60
+
+def cookie():
+    return open(COOKIE_FILE).read().strip()
+
+def remember(path, value):
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(value, f)
+    os.replace(tmp, path)
+
+def recall():
+    try:
+        budget.update(json.load(open(BUDGET_FILE)))
+    except (OSError, ValueError):
+        pass
+    try:
+        asset_types.update({int(k): v for k, v in json.load(open(TYPES_FILE)).items()})
+    except (OSError, ValueError):
+        pass
 
 def note_budget(headers):
     left, reset = headers.get("x-ratelimit-remaining"), headers.get("x-ratelimit-reset")
     if left is not None and reset is not None:
         budget["left"], budget["reset_at"] = int(left), time.time() + int(reset)
+        remember(BUDGET_FILE, budget)
 
 def budget_now():
     if budget["left"] is not None and time.time() >= budget["reset_at"]:
         budget["left"] = None
     return {"left": budget["left"], "resetIn": max(0, int(budget["reset_at"] - time.time())) if budget["left"] is not None else 0}
 
-SINGLE = {2, 11, 12, 17, 18, 27, 28, 29, 30, 31, 79}
+SINGLE = {2, 11, 12, 17, 18, 27, 28, 29, 30, 31, 79} | set(range(48, 57))
 LAYERED = set(range(64, 73))
+ACCESSORY = {8, 41, 42, 43, 44, 45, 46, 47}
+MAX_ACCESSORIES = 10
+WEARABLE = SINGLE | LAYERED | ACCESSORY | {76, 77, 78}
 DEFAULT_BODY = {
     "bodyColors": {k: "#A3A2A5" for k in ("headColor", "leftArmColor", "leftLegColor", "rightArmColor", "rightLegColor", "torsoColor")},
     "scales": {"depth": 1, "head": 1, "height": 1, "proportion": 0, "width": 1, "bodyType": 0},
@@ -32,12 +63,15 @@ class Refused(Exception):
 class Busy(Refused):
     pass
 
+def render_wait():
+    return f"Roblox only draws a few new outfits an hour. Try again in about {max(1, round(budget_now()['resetIn'] / 60))} min."
+
 def rbx(url, body=None, login=True):
     global csrf
     for attempt in range(2):
         headers = {"User-Agent": UA, "Accept": "application/json"}
         if login:
-            headers["Cookie"] = ".ROBLOSECURITY=" + COOKIE
+            headers["Cookie"] = ".ROBLOSECURITY=" + cookie()
         data = None
         if body is not None:
             data = json.dumps(body).encode()
@@ -58,8 +92,7 @@ def rbx(url, body=None, login=True):
             if e.code == 401:
                 raise Refused("The Roblox login on the server has expired. Sal needs to send a new cookie.")
             if e.code == 429:
-                wait = max(1, round(budget_now()["resetIn"] / 60)) if "/avatar/render" in url else 1
-                raise Busy(f"Roblox only draws a few new outfits an hour. Try again in about {wait} min.")
+                raise Busy(render_wait() if "/avatar/render" in url else "Roblox is busy (too many requests). Try again in a minute.")
             detail = e.read().decode("utf-8", "replace")[:300]
             try:
                 detail = json.loads(detail)["errors"][0]["message"] or detail
@@ -99,9 +132,16 @@ def plain_mtl(mtl, names):
 
 def store_model(description_url):
     d = json.loads(download(description_url))
-    key = hashlib.sha1(d["obj"].encode()).hexdigest()[:20]
+    key = hashlib.sha1("|".join([d["obj"], d["mtl"]] + d.get("textures", [])).encode()).hexdigest()[:20]
     folder = os.path.join(CACHE, key)
     names = {h: f"tex{i}.png" for i, h in enumerate(d.get("textures", []))}
+    with store_lock:
+        fetch_model(d, folder, names)
+    base = f"{PUBLIC}/file/{key}"
+    return {"obj": f"{base}/a.obj", "mtl": f"{base}/a.mtl", "textures": [f"{base}/{n}" for n in names.values()],
+            "camera": d.get("camera"), "aabb": d.get("aabb")}
+
+def fetch_model(d, folder, names):
     if not os.path.exists(os.path.join(folder, "done")):
         tmp = folder + ".part"
         shutil.rmtree(tmp, ignore_errors=True)
@@ -118,18 +158,16 @@ def store_model(description_url):
         shutil.rmtree(folder, ignore_errors=True)
         os.rename(tmp, folder)
         sweep()
-    base = f"{PUBLIC}/file/{key}"
-    return {"obj": f"{base}/a.obj", "mtl": f"{base}/a.mtl", "textures": [f"{base}/{n}" for n in names.values()],
-            "camera": d.get("camera"), "aabb": d.get("aabb")}
 
 def sweep():
     for name in os.listdir(CACHE):
         path = os.path.join(CACHE, name)
-        if time.time() - os.path.getmtime(path) > 2 * 86400:
+        if os.path.isdir(path) and time.time() - os.path.getmtime(path) > 2 * 86400:
             shutil.rmtree(path, ignore_errors=True)
 
 def wait_for(fetch):
-    for _ in range(24):
+    deadline = time.time() + 60
+    while time.time() < deadline:
         try:
             r = fetch()
         except Busy:
@@ -171,15 +209,22 @@ def asset_ids(wear):
     return ids
 
 def one_per_slot(picks):
+    picks = [(aid, kind) for aid, kind in picks if kind in WEARABLE]
     last = {kind: aid for aid, kind in picks if kind in SINGLE}
-    return [aid for aid, kind in picks if kind not in SINGLE or last[kind] == aid]
+    extras = [aid for aid, kind in picks if kind in ACCESSORY]
+    dropped = set(extras[:-MAX_ACCESSORIES]) if len(extras) > MAX_ACCESSORIES else set()
+    return [aid for aid, kind in picks if aid not in dropped and (kind not in SINGLE or last[kind] == aid)]
+
+def type_of(aid):
+    if aid not in asset_types:
+        asset_types[aid] = rbx(f"https://economy.roblox.com/v2/assets/{aid}/details", login=False).get("AssetTypeId")
+        remember(TYPES_FILE, asset_types)
+    return asset_types[aid]
 
 def outfit(base, wear):
     base = base or {}
     known = {a["id"]: a for a in base.get("assets", [])}
-    picks = []
-    for aid in dict.fromkeys(asset_ids(wear)):
-        picks.append((aid, rbx(f"https://economy.roblox.com/v2/assets/{aid}/details", login=False).get("AssetTypeId")))
+    picks = [(aid, type_of(aid)) for aid in dict.fromkeys(asset_ids(wear))]
     kinds = dict(picks)
     assets = []
     for n, aid in enumerate(one_per_slot(picks)):
@@ -197,18 +242,21 @@ def outfit(base, wear):
     }
 
 def look_of_outfit(base, wear):
-    if budget_now()["left"] is not None and budget_now()["left"] < 2:
-        raise Busy(f"Roblox only draws a few new outfits an hour. Try again in about {max(1, round(budget_now()['resetIn'] / 60))} min.")
     definition = outfit(base, wear)
     body = {"thumbnailConfig": {"thumbnailId": 1, "thumbnailType": "3d", "size": "420x420"}, "avatarDefinition": definition}
-    for pause in (0, 6, 8):
-        time.sleep(pause)
-        r = rbx("https://avatar.roblox.com/v1/avatar/render", body)
-        if r.get("state") == "Completed" and r.get("imageUrl"):
-            return {"definition": definition, "image": None, "model": store_model(r["imageUrl"])}
-        if r.get("state") != "Pending":
-            raise Refused(f"Roblox could not draw that outfit ({r.get('state')}).")
-    raise Refused("Roblox took too long to draw the outfit. Try again.")
+    with render_lock:
+        if budget_now()["left"] is not None and budget_now()["left"] < 2:
+            raise Busy(render_wait())
+        for pause in (0, 7, 10):
+            if pause and budget_now()["left"] == 0:
+                raise Busy("Roblox is still drawing this outfit and this hour's requests are used up. " + render_wait())
+            time.sleep(pause)
+            r = rbx("https://avatar.roblox.com/v1/avatar/render", body)
+            if r.get("state") == "Completed" and r.get("imageUrl"):
+                return {"definition": definition, "image": None, "model": store_model(r["imageUrl"])}
+            if r.get("state") != "Pending":
+                raise Refused(f"Roblox could not draw that outfit ({r.get('state')}).")
+        raise Refused("Roblox took too long to draw the outfit. Try again.")
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def reply(self, code, body, kind="application/json"):
@@ -237,6 +285,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not 0 < n <= 200_000:
                 raise Refused("Bad request.")
             q = json.loads(self.rfile.read(n))
+            now = time.time()
+            while calls and now - calls[0] > 3600:
+                calls.popleft()
+            if len(calls) >= CALLS_PER_HOUR:
+                raise Busy("The avatar service has been asked too often this hour. Try again later.")
+            calls.append(now)
             if q.get("user"):
                 out = look_of_user(str(q["user"])[:40])
             else:
@@ -262,7 +316,10 @@ def demo():
     user = look_of_user("builderman")
     assert user["definition"]["bodyColors"]["headColor"].startswith("#") and user["model"]["obj"].endswith("/a.obj")
     assert user["image"].startswith("https://")
-    assert one_per_slot([(1, 8), (2, 11), (3, 8), (4, 11), (5, 12)]) == [1, 3, 4, 5]
+    assert one_per_slot([(1, 8), (2, 11), (3, 8), (4, 11), (5, 12), (6, 61), (7, None)]) == [1, 3, 4, 5]
+    hats = [(100 + i, 8) for i in range(12)]
+    assert one_per_slot(hats + [(9, 11)]) == [102 + i for i in range(10)] + [9]      # the newest ten accessories
+    assert type_of(1028606) == type_of(1028606) and 1028606 in asset_types
     d = outfit(user["definition"], [{"id": 1028606}, {"id": 144076760}, {"id": 144076760}])
     assert [a["id"] for a in d["assets"]] == [1028606, 144076760] and d["bodyColors"] == user["definition"]["bodyColors"]
     worn = look_of_outfit(user["definition"], [{"id": 215718515}, {"id": 1028606}]) if os.environ.get("DEMO_RENDER") else user
@@ -272,13 +329,25 @@ def demo():
     assert "map_Kd tex0.png" in open(os.path.join(CACHE, key, "a.mtl")).read()
     assert all(os.path.isfile(os.path.join(CACHE, key, t.split("/")[-1])) for t in worn["model"]["textures"])
     assert worn["model"]["camera"]["fov"] > 0
+    seen = []
+    globals()["fetch_model"] = lambda d, folder, names: seen.append(folder)
+    globals()["download"] = lambda url: json.dumps(shape).encode()
+    shape = {"obj": "O", "mtl": "M1", "textures": ["T1"]}
+    store_model("x")
+    shape = {"obj": "O", "mtl": "M1", "textures": ["T2"]}
+    store_model("x")
+    assert len(set(seen)) == 2, seen
+    saved = dict(budget)
     note_budget({"x-ratelimit-remaining": "0", "x-ratelimit-reset": "900"})
     assert budget_now() == {"left": 0, "resetIn": 900} or budget_now()["resetIn"] == 899
+    assert json.load(open(BUDGET_FILE))["left"] == 0                                 # a restart would still know
     try:
         look_of_outfit(None, [])
         raise AssertionError("an empty budget must refuse before asking Roblox")
     except Busy as e:
         assert "15 min" in str(e), str(e)
+    budget.update(saved)
+    remember(BUDGET_FILE, budget)
     try:
         look_of_user("nosuchuser_zz_9q_x")
         raise AssertionError("an unknown user must be refused")
@@ -288,7 +357,10 @@ def demo():
 
 if __name__ == "__main__":
     os.makedirs(CACHE, exist_ok=True)
+    recall()
     if sys.argv[1:] == ["demo"]:
         demo()
+    elif not PUBLIC.startswith("http"):
+        sys.exit("BLOX_PUBLIC must be the service's public address (https://.../blox-api/<key>): model links are built from it.")
     else:
         http.server.ThreadingHTTPServer(("127.0.0.1", 8766), Handler).serve_forever()

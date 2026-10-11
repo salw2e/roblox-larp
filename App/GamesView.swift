@@ -3,18 +3,32 @@ import BloxKit
 
 struct GamesView: View {
     @EnvironmentObject var store: Store
+    @State private var made = false
     @State private var query = ""
     @State private var results: [Game] = []
     @State private var status = ""
     @State private var loading = false
+    @State private var asked = 0
+
+    private var list: Binding<[Game]> { made ? $store.profile.experiences : $store.profile.games }
 
     var body: some View {
         List {
-            Section("On your profile") {
-                if store.profile.games.isEmpty { Text("None yet. Search below to add some.").foregroundStyle(Color.faint) }
-                ForEach(store.profile.games) { row($0).accessibilityIdentifier("chosenGame") }
-                    .onDelete { store.profile.games.remove(atOffsets: $0) }
-                    .onMove { store.profile.games.move(fromOffsets: $0, toOffset: $1) }
+            Section {
+                Picker("List", selection: $made) {
+                    Text("Favorites").tag(false)
+                    Text("Experiences").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("gameListPicker")
+            } footer: {
+                Text(made ? "Experiences show on your profile as games you made." : "Favorites show on Home under Continue and on the Favorites page.")
+            }
+            Section(made ? "Your experiences" : "Your favorites") {
+                if list.wrappedValue.isEmpty { Text("None yet. Search below to add some.").foregroundStyle(Color.faint) }
+                ForEach(list.wrappedValue) { row($0).accessibilityIdentifier("chosenGame") }
+                    .onDelete { list.wrappedValue.remove(atOffsets: $0) }
+                    .onMove { list.wrappedValue.move(fromOffsets: $0, toOffset: $1) }
             }
             Section("Add from Roblox") {
                 TextField("Search games", text: $query).submitLabel(.search)
@@ -24,9 +38,9 @@ struct GamesView: View {
                 if loading { ProgressView() }
                 if !status.isEmpty { Text(status).foregroundStyle(Color.faint) }
                 ForEach(results) { game in
-                    let added = store.profile.games.contains { $0.id == game.id }
+                    let added = list.wrappedValue.contains { $0.id == game.id }
                     Button {
-                        if added { store.profile.games.removeAll { $0.id == game.id } } else { store.profile.games.append(game) }
+                        if added { list.wrappedValue.removeAll { $0.id == game.id } } else { list.wrappedValue.append(game) }
                     } label: {
                         HStack {
                             row(game)
@@ -56,12 +70,17 @@ struct GamesView: View {
     private func search() async {
         let q = query.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return }
+        asked += 1
+        let mine = asked
         loading = true
         status = ""
         do {
-            results = try await Roblox.games(q)
+            let found = try await Roblox.games(q)
+            guard mine == asked else { return }
+            results = found
             if results.isEmpty { status = "No games found." }
         } catch {
+            guard mine == asked else { return }
             status = error.localizedDescription
         }
         loading = false

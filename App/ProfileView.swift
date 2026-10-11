@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreImage.CIFilterBuiltins
 import BloxKit
 
 struct ProfileView: View {
@@ -10,6 +11,8 @@ struct ProfileView: View {
     var open: (Page) -> Void = { _ in }
     var editAppearance: () -> Void = {}
     @State private var editing = false
+    @State private var showingCode = false
+    @State private var restY: CGFloat?
 
     var body: some View {
         ScrollView {
@@ -18,12 +21,12 @@ struct ProfileView: View {
                 header.padding(.top, 6)
                 chips.padding(.top, 16)
                 if !store.profile.bio.isEmpty {
-                    Text(store.profile.bio).font(.builder(14.5)).foregroundStyle(Color.faint)
+                    Text(store.profile.bio).font(.builder(14.5)).foregroundStyle(Color.faint).lineLimit(3)
                         .padding(.top, 25).accessibilityIdentifier("bio")
                 }
                 buttons.padding(.top, 25)
                 wearing.padding(.top, 28)
-                if !store.profile.games.isEmpty { games.padding(.top, 28) }
+                if !store.profile.experiences.isEmpty { experiences.padding(.top, 28) }
                 Button { open(.fullProfile) } label: {
                     Text("View full profile").font(.builder(14.5, .medium)).frame(maxWidth: .infinity, minHeight: 40)
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.ink, lineWidth: 1))
@@ -32,14 +35,19 @@ struct ProfileView: View {
                 .padding(.vertical, 28)
             }
             .padding(.horizontal, 24)
+            .background(alignment: .top) { backdrop }
             .background(GeometryReader { g in
                 Color.clear.preference(key: ScrollTop.self, value: g.frame(in: .named("profilePage")).minY)
             })
         }
         .coordinateSpace(name: "profilePage")
-        .onPreferenceChange(ScrollTop.self) { atTop = $0 >= -1 }
+        .onPreferenceChange(ScrollTop.self) { y in
+            let rest = max(restY ?? y, y)
+            restY = rest
+            atTop = y >= rest - 1
+        }
+        .onChange(of: full) { _, _ in restY = nil }
         .scrollDisabled(!full || pulling)
-        .background(alignment: .top) { backdrop }
         .background(Color.bg)
         .overlay(alignment: .top) {
             if !full { Capsule().fill(Color.rgb(79, 81, 92)).frame(width: 36, height: 4).padding(.top, 10) }
@@ -50,11 +58,12 @@ struct ProfileView: View {
                     Image(systemName: "xmark").font(.builder(16, .medium))
                         .frame(width: 36, height: 36).background(Color.pill.opacity(0.6), in: Circle())
                 }
-                .accessibilityIdentifier("closeProfile")
+                .accessibilityIdentifier("closeProfile").accessibilityLabel("Close")
                 .padding(.leading, 20).padding(.top, 8)
             }
         }
         .sheet(isPresented: $editing) { EditProfileView() }
+        .sheet(isPresented: $showingCode) { ProfileCode() }
     }
 
     private var backdrop: some View {
@@ -66,7 +75,8 @@ struct ProfileView: View {
             .init(color: .rgb(54, 61, 70), location: 0.85),
             .init(color: .bg, location: 1),
         ], startPoint: .top, endPoint: .bottom)
-        .frame(height: 327).ignoresSafeArea(edges: .top)
+        .frame(height: 327)
+        .overlay(alignment: .top) { Color.rgb(41, 40, 44).frame(height: 800).offset(y: -800) }
     }
 
     private var header: some View {
@@ -74,7 +84,7 @@ struct ProfileView: View {
             Headshot(image: store.avatar, crop: store.profile.crop, size: 88)
             VStack(alignment: .leading, spacing: 3) {
                 NameLine(profile: store.profile, font: 20).frame(height: 24).foregroundStyle(Color.faint)
-                Text("@\(store.profile.username)").font(.builder(14.5)).foregroundStyle(Color.faint).lineLimit(1)
+                Text("@\(store.profile.shownUsername)").font(.builder(14.5)).foregroundStyle(Color.faint).lineLimit(1)
                     .frame(height: 18)
                     .accessibilityIdentifier("username")
             }
@@ -84,17 +94,21 @@ struct ProfileView: View {
 
     private var chips: some View {
         let p = store.profile
-        return HStack(spacing: 8) {
-            chip("\(short(p.friends)) Friends", id: "friendsChip")
-            chip("\(short(p.followers)) Followers", id: "followersChip")
-            chip("\(short(p.following)) Following", id: "followingChip")
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                chip("\(short(p.friends)) Friends", dim: false, id: "friendsChip")
+                chip("\(short(p.followers)) Followers", dim: false, id: "followersChip")
+                chip("\(short(p.following)) Following", dim: p.following == 0, id: "followingChip")
+            }
         }
+        .padding(.horizontal, -24).contentMargins(.horizontal, 24)
     }
 
-    private func chip(_ text: String, id: String) -> some View {
-        Text(text).font(.builder(14.5)).lineLimit(1).minimumScaleFactor(0.7)
+    private func chip(_ text: String, dim: Bool, id: String) -> some View {
+        Text(text).font(.builder(14.5)).lineLimit(1).fixedSize()
             .padding(.horizontal, 12).frame(height: 32)
-            .background(Color.tile, in: Capsule())
+            .background(Color.tile.opacity(dim ? 0.6 : 1), in: Capsule())
+            .foregroundStyle(dim ? Color.dim.opacity(0.6) : Color.ink)
             .accessibilityIdentifier(id)
     }
 
@@ -110,8 +124,11 @@ struct ProfileView: View {
                     .background(Color.tile, in: RoundedRectangle(cornerRadius: 8))
             }
             .accessibilityIdentifier("editProfile")
-            Icon("squares-grid-qr", size: 22).frame(width: 40, height: 40)
-                .background(Color.tile, in: RoundedRectangle(cornerRadius: 8))
+            Button { showingCode = true } label: {
+                Icon("squares-grid-qr", size: 22).frame(width: 40, height: 40)
+                    .background(Color.tile, in: RoundedRectangle(cornerRadius: 8))
+            }
+            .accessibilityIdentifier("profileCode").accessibilityLabel("Profile QR code")
         }
         .font(.builder(14.5, .medium)).lineLimit(1)
         .buttonStyle(PressStyle())
@@ -135,11 +152,11 @@ struct ProfileView: View {
         }
     }
 
-    private var games: some View {
+    private var experiences: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Experiences").font(.builder(20, .bold)).frame(height: 24)
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .top), GridItem(.flexible(), alignment: .top)], spacing: 17) {
-                ForEach(store.profile.games) { g in
+                ForEach(store.profile.experiences) { g in
                     Button { open(.game(g)) } label: { WideGameCard(game: g) }
                         .buttonStyle(PressStyle()).accessibilityIdentifier("profileGame")
                 }
@@ -153,21 +170,59 @@ struct ScrollTop: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
+struct ProfileCode: View {
+    @EnvironmentObject var store: Store
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Share Profile").font(.builder(20, .bold)).padding(.top, 28)
+            if let code = Self.code("https://www.roblox.com/users/profile?username=\(store.profile.shownUsername)") {
+                Image(uiImage: code).interpolation(.none).resizable().scaledToFit().frame(width: 220, height: 220)
+                    .padding(14).background(.white, in: RoundedRectangle(cornerRadius: 12))
+                    .accessibilityIdentifier("profileCodeImage").accessibilityLabel("QR code")
+            }
+            Text("@\(store.profile.shownUsername)").font(.builder(14.5)).foregroundStyle(Color.faint)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .presentationDetents([.medium])
+        .presentationBackground(Color.bg)
+    }
+
+    static func code(_ text: String) -> UIImage? {
+        let filter = CIFilter.qrCodeGenerator()
+        filter.message = Data(text.utf8)
+        guard let out = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: 12, y: 12)),
+              let cg = CIContext().createCGImage(out, from: out.extent) else { return nil }
+        return UIImage(cgImage: cg)
+    }
+}
+
 struct FullProfileView: View {
     @EnvironmentObject var store: Store
     var open: (Page) -> Void = { _ in }
     var editAvatar: () -> Void = {}
     @State private var editing = false
+    @State private var flat = false            // the 3D switch turned off
+    @State private var wholeBio = false
+    @State private var showingCode = false
 
     var body: some View {
         let p = store.profile
+        let collectibles = p.items.filter { $0.limited == true }
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 ZStack(alignment: .topTrailing) {
                     RoundedRectangle(cornerRadius: 8).fill(Color.rgb(25, 26, 30))
-                    AvatarStage().padding(.vertical, 10)
-                    Text("3D").font(.builder(14.5, .bold)).frame(width: 44, height: 48)
-                        .background(Color.tile, in: RoundedRectangle(cornerRadius: 8)).padding(12)
+                    AvatarStage(flat: flat).padding(.vertical, 10)
+                    if store.modelVersion > 0 {
+                        Button { flat.toggle() } label: {
+                            Text(flat ? "2D" : "3D").font(.builder(14.5, .bold)).frame(width: 44, height: 48)
+                                .background(Color.tile, in: RoundedRectangle(cornerRadius: 8))
+                        }
+                        .accessibilityIdentifier("toggle3D").accessibilityLabel(flat ? "Show in 3D" : "Show flat picture")
+                        .padding(12)
+                    }
                 }
                 .frame(height: 300)
                 HStack(alignment: .top, spacing: 13) {
@@ -177,53 +232,73 @@ struct FullProfileView: View {
                         }
                     VStack(alignment: .leading, spacing: 4) {
                         NameLine(profile: p, font: 26)
-                        Text("@\(p.username)").font(.builder(12)).foregroundStyle(Color.faint)
+                        Text("@\(p.shownUsername)").font(.builder(12)).foregroundStyle(Color.faint).lineLimit(1)
                     }
                     .padding(.top, 34)
                 }
                 .padding(.top, -20)
-                HStack(spacing: 8) {
-                    chip("\(short(p.friends)) Friends")
-                    chip("\(short(p.followers)) Followers")
-                    chip("\(short(p.following)) Following")
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        chip("\(short(p.friends)) Friends")
+                        chip("\(short(p.followers)) Followers")
+                        chip("\(short(p.following)) Following")
+                    }
                 }
+                .padding(.horizontal, -15).contentMargins(.horizontal, 15)
                 .padding(.top, 17)
                 if !p.bio.isEmpty {
-                    Text(p.bio).font(.builder(14.5)).foregroundStyle(Color.faint).lineLimit(2).padding(.top, 18)
+                    Text(p.bio).font(.builder(14.5)).foregroundStyle(Color.faint).lineLimit(wholeBio ? nil : 2).padding(.top, 18)
+                        .accessibilityIdentifier("fullBio")
+                    if p.bio.count > 80 || p.bio.contains("\n") {
+                        Button(wholeBio ? "less" : "more") { wholeBio.toggle() }
+                            .font(.builder(14.5)).underline().foregroundStyle(Color.faint).padding(.top, 2)
+                            .accessibilityIdentifier("bioMore")
+                    }
                 }
                 HStack(spacing: 8) {
                     button("Edit avatar", action: editAvatar).accessibilityIdentifier("fullEditAvatar")
                     button("Edit profile") { editing = true }
-                    Icon("three-dots-horizontal", size: 20).frame(width: 40, height: 40).background(Color.tile, in: RoundedRectangle(cornerRadius: 8))
+                    Menu {
+                        Button("Share profile") { showingCode = true }
+                        Button("Edit profile") { editing = true }
+                    } label: {
+                        Icon("three-dots-horizontal", size: 20).frame(width: 40, height: 40).background(Color.tile, in: RoundedRectangle(cornerRadius: 8))
+                    }
+                    .accessibilityIdentifier("fullMore").accessibilityLabel("More")
                 }
                 .padding(.top, 24)
                 section("Currently Wearing") {
+                    if p.wearing.isEmpty { Text("Nothing yet.").font(.builder(14.5)).foregroundStyle(Color.faint) }
                     row { ForEach(p.wearing) { item in Button { open(.item(item)) } label: { ItemCard(item: item).frame(width: 108) } } }
                 }
-                if !p.games.isEmpty {
+                if !p.experiences.isEmpty {
                     section("Experiences") {
-                        row { ForEach(p.games) { g in Button { open(.game(g)) } label: { WideGameCard(game: g).frame(width: 170) } } }
+                        row { ForEach(p.experiences) { g in Button { open(.game(g)) } label: { WideGameCard(game: g).frame(width: 170) } } }
                     }
+                }
+                if !p.games.isEmpty {
                     section("Favorites", page: .favorites) {
                         row { ForEach(p.games) { g in Button { open(.game(g)) } label: { GameCard(game: g).frame(width: 108) } } }
                     }
                 }
                 if !p.friendList.isEmpty {
-                    section("Friends (\(grouped(p.friends)))", page: .friends) {
+                    section("Friends (\(grouped(max(p.friends, p.friendList.count))))", page: .friends) {
                         row {
                             ForEach(p.friendList) { f in
-                                VStack(spacing: 6) {
-                                    RemoteCircle(url: f.headshot, size: 84)
-                                    Text(f.displayName).font(.builder(12)).lineLimit(1)
+                                Button { open(.friend(f.id)) } label: {
+                                    VStack(spacing: 6) {
+                                        RemoteCircle(url: f.headshot, size: 84)
+                                        Text(f.displayName).font(.builder(12)).lineLimit(1)
+                                    }
+                                    .frame(width: 88)
                                 }
-                                .frame(width: 88)
                             }
                         }
                     }
                 }
-                if !p.items.isEmpty {
+                if !collectibles.isEmpty {
                     section("Collections", page: .inventory) {
-                        row { ForEach(p.items) { item in Button { open(.item(item)) } label: { ItemCard(item: item).frame(width: 108) } } }
+                        row { ForEach(collectibles) { item in Button { open(.item(item)) } label: { ItemCard(item: item).frame(width: 108) } } }
                     }
                 }
             }
@@ -232,10 +307,11 @@ struct FullProfileView: View {
         }
         .page("Profile")
         .sheet(isPresented: $editing) { EditProfileView() }
+        .sheet(isPresented: $showingCode) { ProfileCode() }
     }
 
     private func chip(_ text: String) -> some View {
-        Text(text).font(.builder(14.5)).lineLimit(1).padding(.horizontal, 12).frame(height: 31).background(Color.tile, in: Capsule())
+        Text(text).font(.builder(14.5)).lineLimit(1).fixedSize().padding(.horizontal, 12).frame(height: 31).background(Color.tile, in: Capsule())
     }
 
     private func button(_ title: String, action: @escaping () -> Void) -> some View {
@@ -253,7 +329,7 @@ struct FullProfileView: View {
                     if page != nil { Icon("chevron-large-right", size: 16) }
                 }
             }
-            .disabled(page == nil)
+            .allowsHitTesting(page != nil)
             content()
         }
         .padding(.leading, 16).padding(.top, 34)

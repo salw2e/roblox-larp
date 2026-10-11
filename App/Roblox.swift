@@ -1,13 +1,16 @@
-import Foundation
+import SwiftUI
 import BloxKit
 
 enum BloxError: LocalizedError {
-    case offline, noUser, noPicture
-    case said(String)       // the avatar service's own words
+    case offline, busy, noUser, noPicture
+    case server(Int)
+    case said(String)
     var errorDescription: String? {
         switch self {
         case .said(let words): words
-        case .offline: "Roblox didn't answer. Check the internet and try again."
+        case .offline: "Couldn't reach Roblox. Check the internet and try again."
+        case .busy: "Roblox is busy (too many requests). Try again in a minute."
+        case .server(let code): "Roblox had a problem (error \(code)). Try again."
         case .noUser: "No Roblox user with that name."
         case .noPicture: "Roblox has no avatar picture for that user yet."
         }
@@ -22,22 +25,11 @@ enum Roblox {
             r.httpBody = post
             r.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
-        guard let reply = try? await URLSession.shared.data(for: r),
-              (reply.1 as? HTTPURLResponse)?.statusCode == 200 else { throw BloxError.offline }
-        return reply.0
-    }
-
-    static let service = Bundle.main.object(forInfoDictionaryKey: "BloxAPI") as? String ?? ""
-
-    static func look(_ body: Data) async throws -> Look {
-        guard let url = URL(string: service + "/look") else { throw BloxError.offline }
-        var r = URLRequest(url: url, timeoutInterval: 90)
-        r.httpMethod = "POST"
-        r.httpBody = body
-        r.setValue("application/json", forHTTPHeaderField: "Content-Type")
         guard let reply = try? await URLSession.shared.data(for: r) else { throw BloxError.offline }
-        if let look = Parse.look(reply.0) { return look }
-        throw Parse.lookError(reply.0).map(BloxError.said) ?? BloxError.offline
+        let code = (reply.1 as? HTTPURLResponse)?.statusCode ?? 0
+        if code == 429 { throw BloxError.busy }
+        guard code == 200 else { throw BloxError.server(code) }
+        return reply.0
     }
 
     static func url(_ base: String, _ query: [String: String]) -> URL {
@@ -46,6 +38,26 @@ enum Roblox {
         return c.url!
     }
 
+    private static func list(_ ids: [Int64]) -> String { ids.map { "\($0)" }.joined(separator: ",") }
+
+    // MARK: The avatar service
+
+    static let service = Bundle.main.object(forInfoDictionaryKey: "BloxAPI") as? String ?? ""
+
+    static func look(_ body: Data) async throws -> Look {
+        guard let url = URL(string: service + "/look") else { throw BloxError.said("The avatar service isn't set up in this build.") }
+        var r = URLRequest(url: url, timeoutInterval: 90)
+        r.httpMethod = "POST"
+        r.httpBody = body
+        r.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        guard let reply = try? await URLSession.shared.data(for: r) else { throw BloxError.offline }
+        if let look = Parse.look(reply.0) { return look }
+        if let words = Parse.lookError(reply.0) { throw BloxError.said(words) }
+        throw BloxError.said("The avatar service on your server isn't answering. Try again in a minute.")
+    }
+
+    // MARK: Users
+
     static func user(_ name: String) async throws -> Parse.User {
         let body = try JSONSerialization.data(withJSONObject: ["usernames": [name], "excludeBannedUsers": true])
         let data = try await fetch(URL(string: "https://users.roblox.com/v1/usernames/users")!, post: body)
@@ -53,65 +65,73 @@ enum Roblox {
         return u
     }
 
-    static func avatarPNG(_ userId: Int64) async throws -> Data {
-        let u = url("https://thumbnails.roblox.com/v1/users/avatar", ["userIds": "\(userId)", "size": "720x720", "format": "Png"])
-        for _ in 0..<6 {
-            let data = try await fetch(u)
-            if let link = Parse.images(data)[userId], let img = URL(string: link) { return try await fetch(img) }
-            guard Parse.pending(data) else { break }
-            try await Task.sleep(for: .seconds(1.5))
-        }
-        throw BloxError.noPicture
+    static func person(_ username: String) async throws -> Friend {
+        let u = try await user(username)
+        return Friend(id: u.id, name: u.name, displayName: u.displayName, headshot: await headshots([u.id])[u.id])
+    }
+
+    static func headshots(_ ids: [Int64]) async -> [Int64: String] {
+        guard !ids.isEmpty else { return [:] }
+        return await pictures("https://thumbnails.roblox.com/v1/users/avatar-headshot", ["userIds": list(ids), "size": "150x150", "format": "Png"])
     }
 
     static func wearing(_ userId: Int64) async throws -> [Item] {
         let ids = Parse.wearing(try await fetch(URL(string: "https://avatar.roblox.com/v1/users/\(userId)/currently-wearing")!))
-        let found = await withTaskGroup(of: Item?.self) { group in
-            for id in ids {
-                group.addTask { try? Parse.asset(await fetch(URL(string: "https://economy.roblox.com/v2/assets/\(id)/details")!)) }
+        var found: [Int64: Item] = [:]
+        for round in 0..<2 {
+            let missing = ids.filter { found[$0] == nil }
+            if missing.isEmpty { break }
+            if round > 0 { try? await Task.sleep(for: .seconds(2)) }
+            for chunk in stride(from: 0, to: missing.count, by: 5).map({ Array(missing[$0..<min($0 + 5, missing.count)]) }) {
+                await withTaskGroup(of: Item?.self) { group in
+                    for id in chunk {
+                        group.addTask { try? Parse.asset(await fetch(URL(string: "https://economy.roblox.com/v2/assets/\(id)/details")!)) }
+                    }
+                    for await item in group { if let item { found[item.id] = item } }
+                }
             }
-            var all: [Item] = []
-            for await item in group { if let item { all.append(item) } }
-            return all
         }
-        let ordered = ids.compactMap { id in found.first { $0.id == id } }
-        return await withThumbs(ordered).map { var i = $0; i.wearing = true; return i }
+        guard ids.allSatisfy({ found[$0] != nil }) else {
+            throw BloxError.said("Roblox was too busy to list everything that user wears. Try again in a minute.")
+        }
+        return await withThumbs(ids.compactMap { found[$0] }).map { var i = $0; i.wearing = true; return i }
     }
 
-    static func search(_ keyword: String) async throws -> [Item] {
+    // MARK: Catalog
+
+    static func search(_ keyword: String, category: String? = nil, cursor: String? = nil) async throws -> (items: [Item], next: String?) {
         var q = ["limit": "30"]
         if !keyword.isEmpty { q["keyword"] = keyword }
-        let items = Parse.catalog(try await fetch(url("https://catalog.roblox.com/v2/search/items/details", q)))
-        return await withThumbs(items)
-    }
-
-    static func games(_ query: String) async throws -> [Game] {
-        let data = try await fetch(url("https://apis.roblox.com/search-api/omni-search",
-                                       ["searchQuery": query, "sessionId": UUID().uuidString, "pageType": "all"]))
-        let games = Array(Parse.games(data).prefix(20))
-        guard !games.isEmpty else { return [] }
-        let icons = (try? await fetch(url("https://thumbnails.roblox.com/v1/games/icons",
-            ["universeIds": games.map { "\($0.id)" }.joined(separator: ","), "size": "512x512", "format": "Png"])))
-            .map(Parse.images) ?? [:]
-        return games.map { var g = $0; g.icon = icons[g.id]; return g }
+        if let category { q["taxonomy"] = category }
+        if let cursor { q["cursor"] = cursor }
+        let data = try await fetch(url("https://catalog.roblox.com/v2/search/items/details", q))
+        return (await withThumbs(Parse.catalog(data)), Parse.catalogCursor(data))
     }
 
     static func withThumbs(_ items: [Item]) async -> [Item] {
-        func batch(_ path: String, _ key: String, _ ids: [Int64]) async -> [Int64: String] {
-            guard !ids.isEmpty else { return [:] }
-            let u = url("https://thumbnails.roblox.com/v1/\(path)",
-                        [key: ids.map { "\($0)" }.joined(separator: ","), "size": "420x420", "format": "Png"])
-            return (try? await fetch(u)).map(Parse.images) ?? [:]
-        }
-        async let assets = batch("assets", "assetIds", items.filter { !$0.bundle }.map(\.id))
-        async let bundles = batch("bundles/thumbnails", "bundleIds", items.filter(\.bundle).map(\.id))
+        async let assets = pictures("https://thumbnails.roblox.com/v1/assets",
+                                    ["assetIds": list(items.filter { !$0.bundle }.map(\.id)), "size": "420x420", "format": "Png"])
+        async let bundles = pictures("https://thumbnails.roblox.com/v1/bundles/thumbnails",
+                                     ["bundleIds": list(items.filter(\.bundle).map(\.id)), "size": "420x420", "format": "Png"])
         let (a, b) = await (assets, bundles)
         return items.map { var i = $0; i.thumb = (i.bundle ? b : a)[i.id] ?? i.thumb; return i }
     }
 
-    static func person(_ username: String) async throws -> Friend {
-        let u = try await user(username)
-        return Friend(id: u.id, name: u.name, displayName: u.displayName, headshot: try? await headshot(u.id))
+    static func bigThumb(_ item: Item) async -> String? {
+        guard !item.bundle else { return nil }
+        return await pictures("https://thumbnails.roblox.com/v1/assets", ["assetIds": "\(item.id)", "size": "700x700", "format": "Png"])[item.id]
+    }
+
+    private static func pictures(_ base: String, _ query: [String: String]) async -> [Int64: String] {
+        guard query.values.allSatisfy({ !$0.isEmpty }) else { return [:] }
+        var found: [Int64: String] = [:]
+        for round in 0..<2 {
+            guard let data = try? await fetch(url(base, query)) else { break }
+            found.merge(Parse.images(data)) { $1 }
+            guard Parse.pending(data), round == 0 else { break }
+            try? await Task.sleep(for: .seconds(1.5))
+        }
+        return found
     }
 
     static func itemInfo(_ item: Item) async -> ItemInfo? {
@@ -119,27 +139,80 @@ enum Roblox {
         return Parse.itemInfo(data)
     }
 
+    // MARK: Games
+
+    static func games(_ query: String) async throws -> [Game] {
+        let data = try await fetch(url("https://apis.roblox.com/search-api/omni-search",
+                                       ["searchQuery": query, "sessionId": UUID().uuidString, "pageType": "all"]))
+        return await complete(Array(Parse.games(data).prefix(20)))
+    }
+
+    static func complete(_ games: [Game]) async -> [Game] {
+        guard !games.isEmpty else { return [] }
+        let ids = games.map(\.id)
+        async let shots = gamePictures(ids)
+        async let voted = try? fetch(url("https://games.roblox.com/v1/games/votes", ["universeIds": list(ids)]))
+        let (p, v) = await (shots, voted)
+        let ratings = v.map(Parse.votes) ?? [:]
+        return games.map { var g = $0; g.icon = p.icons[g.id] ?? g.icon; g.wide = p.wide[g.id] ?? g.wide; g.rating = ratings[g.id] ?? g.rating; return g }
+    }
+
+    static func gamePictures(_ ids: [Int64]) async -> (icons: [Int64: String], wide: [Int64: String]) {
+        guard !ids.isEmpty else { return ([:], [:]) }
+        async let icons = pictures("https://thumbnails.roblox.com/v1/games/icons", ["universeIds": list(ids), "size": "512x512", "format": "Png"])
+        var wide: [Int64: String] = [:]
+        for chunk in stride(from: 0, to: ids.count, by: 50).map({ Array(ids[$0..<min($0 + 50, ids.count)]) }) {
+            let u = url("https://thumbnails.roblox.com/v1/games/multiget/thumbnails",
+                        ["universeIds": list(chunk), "countPerUniverse": "1", "size": "768x432", "format": "Png"])
+            if let data = try? await fetch(u) { wide.merge(Parse.wideThumbs(data)) { $1 } }
+        }
+        return (await icons, wide)
+    }
+
+    static func playing(_ ids: [Int64]) async -> [Int64: Int]? {
+        guard let data = try? await fetch(url("https://games.roblox.com/v1/games", ["universeIds": list(ids)])) else { return nil }
+        return Parse.playing(data)
+    }
+
     static func gameInfo(_ universe: Int64) async -> GameInfo? {
         guard let data = try? await fetch(url("https://games.roblox.com/v1/games", ["universeIds": "\(universe)"])) else { return nil }
         return Parse.gameInfo(data)
     }
 
-    static func headshot(_ userId: Int64) async throws -> String? {
-        Parse.images(try await fetch(url("https://thumbnails.roblox.com/v1/users/avatar-headshot",
-                                         ["userIds": "\(userId)", "size": "150x150", "format": "Png"])))[userId]
-    }
-
     static func home() async throws -> [(title: String, games: [Game])] {
-        let sorts = Parse.sorts(try await fetch(url("https://apis.roblox.com/explore-api/v1/get-sorts",
-                                                    ["sessionId": UUID().uuidString])))
-        let ids = Array(Set(sorts.flatMap { $0.games.prefix(12).map(\.id) }))
-        var wide: [Int64: String] = [:]
-        for chunk in stride(from: 0, to: ids.count, by: 50).map({ Array(ids[$0..<min($0 + 50, ids.count)]) }) {
-            let u = url("https://thumbnails.roblox.com/v1/games/multiget/thumbnails",
-                        ["universeIds": chunk.map { "\($0)" }.joined(separator: ","), "countPerUniverse": "1",
-                         "size": "768x432", "format": "Png"])
-            if let data = try? await fetch(u) { wide.merge(Parse.wideThumbs(data)) { $1 } }
-        }
+        let sorts = Parse.sorts(try await fetch(url("https://apis.roblox.com/explore-api/v1/get-sorts", ["sessionId": UUID().uuidString])))
+        let wide = await gamePictures(Array(Set(sorts.flatMap { $0.games.prefix(12).map(\.id) }))).wide
         return sorts.map { s in (s.title, s.games.prefix(12).map { var g = $0; g.wide = wide[g.id]; return g }) }
+    }
+}
+
+actor Pictures {
+    static let shared = Pictures()
+    static let kept: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 400
+        return cache
+    }()
+    private var loading: [String: Task<UIImage?, Never>] = [:]
+
+    func image(_ link: String) async -> UIImage? {
+        if let have = Self.kept.object(forKey: link as NSString) { return have }
+        if let running = loading[link] { return await running.value }
+        let task = Task<UIImage?, Never> {
+            guard let url = URL(string: link) else { return nil }
+            for attempt in 0..<2 {
+                if attempt > 0 { try? await Task.sleep(for: .seconds(1.5)) }
+                if let reply = try? await URLSession.shared.data(from: url), (reply.1 as? HTTPURLResponse)?.statusCode == 200,
+                   let image = UIImage(data: reply.0) {
+                    return image
+                }
+            }
+            return nil
+        }
+        loading[link] = task
+        let image = await task.value
+        loading[link] = nil
+        if let image { Self.kept.setObject(image, forKey: link as NSString) }
+        return image
     }
 }

@@ -11,12 +11,18 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
     public var thumb: String?
     public var wearing: Bool
     public var creatorVerified: Bool?
+    public var limited: Bool?
+    public var copied: Bool?
 
     public init(id: Int64, bundle: Bool = false, name: String, creator: String = "Roblox", price: Int?,
-                thumb: String? = nil, wearing: Bool = false, creatorVerified: Bool? = nil) {
+                thumb: String? = nil, wearing: Bool = false, creatorVerified: Bool? = nil, limited: Bool? = nil) {
         self.id = id; self.bundle = bundle; self.name = name; self.creator = creator
         self.price = price; self.thumb = thumb; self.wearing = wearing; self.creatorVerified = creatorVerified
+        self.limited = limited
     }
+
+    public func same(_ other: Item) -> Bool { id == other.id && bundle == other.bundle }
+    public var key: String { (bundle ? "b" : "") + "\(id)" }
 
     public var showsCreatorCheck: Bool { creatorVerified ?? (creator == "Roblox") }
 }
@@ -53,6 +59,12 @@ public struct Crop: Codable, Hashable, Sendable {
     public var x: Double = 0
     public var y: Double = 0.72
     public init() {}
+    public init(scale: Double, x: Double, y: Double) { self.scale = scale; self.x = x; self.y = y }
+
+    public var clamped: Crop {
+        let s = min(max(scale, 0.8), 8), reach = s / 2
+        return Crop(scale: s, x: min(max(x, -reach), reach), y: min(max(y, -reach), reach))
+    }
 }
 
 public struct Profile: Codable, Hashable, Sendable {
@@ -68,6 +80,7 @@ public struct Profile: Codable, Hashable, Sendable {
     public var crop = Crop()
     public var items: [Item] = []
     public var games: [Game] = []
+    public var experiences: [Game] = []             // games "made by" the account, on the profile
     public var friendList: [Friend] = []
     public var requests = 0          // the badge on Add Friends
     public var notifications = 0     // the bell
@@ -79,23 +92,56 @@ public struct Profile: Codable, Hashable, Sendable {
     public var chats: [String: [ChatLine]] = [:]    // by friend id
     public var definition: String?
     public var drawn: String?
+    public var idCounter = 0
+    public var picturesAt: Double?
 
     public var needsRedraw: Bool { wearSignature(items) != (drawn ?? "") }
 
     public init() {}
 
     public static func load(_ data: Data) -> Profile? {
-        guard var base = (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(Profile()))) as? [String: Any],
-              let saved = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
-        base.merge(saved) { $1 }
-        guard let merged = try? JSONSerialization.data(withJSONObject: base) else { return nil }
+        guard let saved = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let shape = (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(sample))) as? [String: Any],
+              let merged = try? JSONSerialization.data(withJSONObject: fill(saved, like: shape)) else { return nil }
         return try? JSONDecoder().decode(Profile.self, from: merged)
+    }
+
+    static var sample: Profile {
+        var p = Profile()
+        let item = Item(id: 0, name: "", price: 0), friend = Friend(id: 0, name: "", displayName: "")
+        var trade = Trade(id: 0, partner: friend)
+        trade.giving = [item]
+        trade.receiving = [item]
+        p.items = [item]
+        p.games = [Game(id: 0, name: "", playing: 0)]
+        p.experiences = p.games
+        p.friendList = [friend]
+        p.trades = [trade]
+        p.notices = [Notice(id: 0, text: "", when: "")]
+        return p
+    }
+
+    static func fill(_ value: Any, like shape: Any) -> Any {
+        if let shape = shape as? [String: Any], var value = value as? [String: Any] {
+            for (key, example) in shape {
+                if let have = value[key], !(have is NSNull) || example is NSNull {
+                    value[key] = fill(have, like: example)
+                } else if !(example is NSNull) {
+                    value[key] = example is [Any] ? [Any]() : example
+                }
+            }
+            return value
+        }
+        if let shape = shape as? [Any], let example = shape.first, let value = value as? [Any] {
+            return value.map { fill($0, like: example) }
+        }
+        return value
     }
 
     public var wearing: [Item] { items.filter(\.wearing) }
 
     public mutating func wear(_ item: Item, _ on: Bool = true) {
-        if let i = items.firstIndex(where: { $0.id == item.id && $0.bundle == item.bundle }) {
+        if let i = items.firstIndex(where: { $0.same(item) }) {
             items[i].wearing = on
         } else {
             var copy = item
@@ -104,5 +150,35 @@ public struct Profile: Codable, Hashable, Sendable {
         }
     }
 
-    public func owns(_ item: Item) -> Item? { items.first { $0.id == item.id && $0.bundle == item.bundle } }
+    public func owns(_ item: Item) -> Item? { items.first { $0.same(item) } }
+
+    public var shownName: String {
+        let d = displayName.trimmingCharacters(in: .whitespaces)
+        return d.isEmpty ? (username.isEmpty ? "Player" : username) : d
+    }
+    public var shownUsername: String { username.isEmpty ? "Player" : username }
+
+    public mutating func adopt(copiedItems: [Item]) {
+        items.removeAll { old in old.copied == true && !copiedItems.contains { $0.same(old) } }
+        for i in items.indices { items[i].wearing = false }
+        for item in copiedItems {
+            if owns(item) == nil {
+                var copy = item
+                copy.copied = true
+                items.append(copy)
+            }
+            wear(item)
+        }
+    }
+
+    public mutating func removeFriend(_ id: Int64) {
+        friendList.removeAll { $0.id == id }
+        chats["\(id)"] = nil
+        for i in notices.indices where notices[i].friend == id { notices[i].friend = nil }
+    }
+
+    public mutating func newId() -> Int {
+        idCounter = max(idCounter, (trades.map(\.id) + notices.map(\.id)).max() ?? 0) + 1
+        return idCounter
+    }
 }

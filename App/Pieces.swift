@@ -24,9 +24,15 @@ struct Icon: View {
         self.name = name; self.size = size; self.filled = filled
     }
 
+    static let available = UIFont(name: "BuilderIcons-Regular", size: 12) != nil
+
     var body: some View {
-        Text(name).font(.custom(filled ? "BuilderIcons-Filled" : "BuilderIcons-Regular", fixedSize: size))
-            .lineLimit(1).fixedSize().accessibilityHidden(true)
+        if Self.available {
+            Text(name).font(.custom(filled ? "BuilderIcons-Filled" : "BuilderIcons-Regular", fixedSize: size))
+                .lineLimit(1).fixedSize().accessibilityHidden(true)
+        } else {
+            Color.clear.frame(width: size, height: size).accessibilityHidden(true)
+        }
     }
 }
 
@@ -75,10 +81,10 @@ struct NameLine: View {
     var font: CGFloat = 30
     var body: some View {
         HStack(spacing: 8) {
-            Text(profile.displayName).font(.builder(font, .bold)).lineLimit(1).minimumScaleFactor(0.6)
+            Text(profile.shownName).font(.builder(font, .bold)).lineLimit(1).truncationMode(.tail).minimumScaleFactor(0.75)
                 .accessibilityIdentifier("displayName")
-            if profile.verified { VerifiedBadge(size: font * 0.75) }
-            MemberBadge(badge: profile.badge, size: font * 0.75)
+            if profile.verified { VerifiedBadge(size: font * 0.75).fixedSize().accessibilityLabel("Verified") }
+            MemberBadge(badge: profile.badge, size: font * 0.75).fixedSize()
         }
     }
 }
@@ -103,8 +109,8 @@ struct Headshot: View {
             LinearGradient(colors: [Color(white: 0.32), Color(white: 0.2)], startPoint: .top, endPoint: .bottom)
             if let image {
                 Image(uiImage: image).resizable().scaledToFit()
-                    .frame(width: size * crop.scale, height: size * crop.scale)
-                    .offset(x: crop.x * size, y: crop.y * size)
+                    .frame(width: size * crop.clamped.scale, height: size * crop.clamped.scale)
+                    .offset(x: crop.clamped.x * size, y: crop.clamped.y * size)
             } else {
                 Icon("person", size: size * 0.6, filled: true).foregroundStyle(.white)
             }
@@ -194,7 +200,11 @@ struct NumberField: View {
             .field()
             .accessibilityIdentifier(id)
             .onAppear { text = value == 0 ? "" : "\(value)" }   // empty at 0, so typing doesn't give "011"
-            .onChange(of: text) { _, t in value = number(from: t) }
+            .onChange(of: text) { _, t in
+                let kept = digits(in: t)
+                if kept != t { text = kept }
+                value = number(from: kept)
+            }
     }
 }
 
@@ -210,7 +220,7 @@ struct WideGameCard: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             Text(game.name).font(.builder(14.5, .bold)).lineLimit(1).frame(height: 18).padding(.top, 12)
             HStack(spacing: 3) {
-                Icon("thumb-up", size: 15, filled: true)
+                Icon(game.rating == nil ? "two-people" : "thumb-up", size: 15, filled: true)
                 Text(game.rating.map { "\($0)% Rating" } ?? "\(short(game.playing)) Playing")
             }
             .font(.builder(14.5)).foregroundStyle(Color.faint).frame(height: 18).padding(.top, 3)
@@ -224,9 +234,8 @@ struct RemoteCircle: View {
     var body: some View {
         Circle().fill(Color.tile)
             .overlay {
-                AsyncImage(url: url.flatMap(URL.init(string:))) { $0.resizable().scaledToFill() } placeholder: {
-                    Icon("person", size: size * 0.5, filled: true).foregroundStyle(Color.faint)
-                }
+                Icon("person", size: size * 0.5, filled: true).foregroundStyle(Color.faint)
+                RemoteImage(url: url, fill: true)
             }
             .frame(width: size, height: size)
             .clipShape(Circle())
@@ -255,19 +264,37 @@ struct CountBubble: View {
 struct RemoteImage: View {
     let url: String?
     let fill: Bool
+    @State private var image: UIImage?
+    @State private var failed = false
+
     var body: some View {
-        AsyncImage(url: url.flatMap(URL.init(string:)), transaction: Transaction(animation: .easeOut(duration: 0.2))) { phase in
-            if let image = phase.image {
-                image.resizable().aspectRatio(contentMode: fill ? .fill : .fit).transition(.opacity)
-            } else if url != nil, phase.error == nil {
+        let shown = image ?? url.flatMap { Pictures.kept.object(forKey: $0 as NSString) }
+        ZStack {
+            if let shown {
+                Image(uiImage: shown).resizable().aspectRatio(contentMode: fill ? .fill : .fit).transition(.opacity)
+            } else if url != nil, !failed {
                 Shimmer()
             }
+        }
+        .task(id: url) {
+            guard let url else { return }
+            failed = false
+            let loaded = await Pictures.shared.image(url)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.2)) { image = loaded }
+            failed = loaded == nil
         }
     }
 }
 
 struct Shimmer: View {
-    static let animated = !ProcessInfo.processInfo.arguments.contains("-uitest")
+    static var animated: Bool {
+        #if DEBUG
+        return !ProcessInfo.processInfo.arguments.contains("-uitest")
+        #else
+        return true
+        #endif
+    }
     @State private var moved = false
 
     var body: some View {

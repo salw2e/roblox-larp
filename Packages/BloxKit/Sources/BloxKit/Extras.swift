@@ -3,7 +3,8 @@ import Foundation
 public struct ChatLine: Codable, Hashable, Sendable {
     public var mine: Bool
     public var text: String
-    public init(mine: Bool, text: String) { self.mine = mine; self.text = text }
+    public var id: Int?
+    public init(mine: Bool, text: String, id: Int? = nil) { self.mine = mine; self.text = text; self.id = id }
 }
 
 public struct Notice: Codable, Identifiable, Hashable, Sendable {
@@ -37,6 +38,16 @@ public enum Ledger {
     public static let incoming = ["Sales of Goods", "Premium Stipends", "Premium Payouts", "Group Payouts", "Currency Purchases"]
     public static let outgoing = ["Purchases"]
     public static let pending = "Pending Robux"
+
+    public static let periods = ["Past Day", "Past Week", "Past Month", "Past Year"]
+    public static func amount(_ monthly: Int, in period: String) -> Int {
+        switch period {
+        case "Past Day": return monthly / 30
+        case "Past Week": return monthly * 7 / 30
+        case "Past Year": return monthly * 12
+        default: return monthly
+        }
+    }
 }
 
 public enum Purchase: Equatable, Sendable { case bought, alreadyOwned, offSale, tooExpensive }
@@ -50,7 +61,7 @@ extension Profile {
         guard price <= robux else { return .tooExpensive }
         robux -= price
         if price > 0 { ledger["Purchases", default: 0] += price }
-        wear(item)
+        wear(item, false)
         return .bought
     }
 
@@ -61,11 +72,16 @@ extension Profile {
     }
 
     public mutating func accept(trade id: Int) -> Bool {
-        guard let i = trades.firstIndex(where: { $0.id == id }), trades[i].status == .inbound else { return false }
+        guard trades.first(where: { $0.id == id })?.status == .inbound else { return false }
+        return complete(trade: id)
+    }
+
+    public mutating func complete(trade id: Int) -> Bool {
+        guard let i = trades.firstIndex(where: { $0.id == id }), trades[i].status != .completed else { return false }
         let t = trades[i]
         guard robux + t.getRobux - t.giveRobux >= 0 else { return false }
         robux += t.getRobux - t.giveRobux
-        items.removeAll { mine in t.giving.contains { $0.id == mine.id && $0.bundle == mine.bundle } }
+        items.removeAll { mine in t.giving.contains { $0.same(mine) } }
         for item in t.receiving where owns(item) == nil {
             var copy = item
             copy.wearing = false
@@ -78,12 +94,14 @@ extension Profile {
     public mutating func say(_ text: String, to friend: Int64, mine: Bool) {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
-        chats["\(friend)", default: []].append(ChatLine(mine: mine, text: t))
+        chats["\(friend)", default: []].append(ChatLine(mine: mine, text: t, id: newId()))
+    }
+
+    public func giveValue(of t: Trade) -> Int {
+        t.giving.reduce(t.giveRobux) { $0 + ((owns($1) ?? $1).price ?? 0) }
     }
 
     public func chat(with friend: Int64) -> [ChatLine] { chats["\(friend)"] ?? [] }
-
-    public var nextId: Int { (trades.map(\.id) + notices.map(\.id)).max().map { $0 + 1 } ?? 1 }
 }
 
 public struct GameInfo: Equatable, Sendable {
@@ -124,13 +142,24 @@ extension Parse {
     public static func itemInfo(_ data: Data) -> ItemInfo? {
         struct R: Decodable { let Description: String?; let AssetTypeId: Int?; let IsLimited: Bool?; let IsLimitedUnique: Bool?; let Created: String? }
         guard let r = try? JSONDecoder().decode(R.self, from: data) else { return nil }
-        return ItemInfo(description: r.Description ?? "", type: assetTypes[r.AssetTypeId ?? 0] ?? "Accessory",
+        return ItemInfo(description: r.Description ?? "", type: assetTypes[r.AssetTypeId ?? 0] ?? "",
                         limited: (r.IsLimited ?? false) || (r.IsLimitedUnique ?? false), created: day(r.Created))
     }
 
-    static func day(_ iso: String?) -> String {
-        let p = (iso ?? "").prefix(10).split(separator: "-").compactMap { Int($0) }
-        return p.count == 3 ? "\(p[1])/\(p[2])/\(p[0])" : ""
+    static func day(_ iso: String?, zone: TimeZone = .current) -> String {
+        guard let iso else { return "" }
+        let parse = ISO8601DateFormatter()
+        parse.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        var date = parse.date(from: iso)
+        if date == nil {
+            parse.formatOptions = [.withInternetDateTime]
+            date = parse.date(from: iso)
+        }
+        guard let date else { return "" }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = zone
+        let c = calendar.dateComponents([.year, .month, .day], from: date)
+        return "\(c.month ?? 0)/\(c.day ?? 0)/\(c.year ?? 0)"
     }
 
     static let assetTypes: [Int: String] = [
@@ -138,6 +167,8 @@ extension Parse {
         29: "Left Arm", 30: "Left Leg", 31: "Right Leg", 41: "Hair", 42: "Face Accessory", 43: "Neck Accessory",
         44: "Shoulder Accessory", 45: "Front Accessory", 46: "Back Accessory", 47: "Waist Accessory", 61: "Emote",
         64: "T-Shirt", 65: "Shirt", 66: "Pants", 67: "Jacket", 68: "Sweater", 69: "Shorts", 70: "Left Shoe",
-        71: "Right Shoe", 72: "Dress & Skirt", 79: "Head",
+        71: "Right Shoe", 72: "Dress & Skirt", 76: "Eyebrows", 77: "Eyelashes", 78: "Mood", 79: "Head", 92: "Background",
+        48: "Animation", 49: "Animation", 50: "Animation", 51: "Animation", 52: "Animation", 53: "Animation",
+        54: "Animation", 55: "Animation", 56: "Animation",
     ]
 }

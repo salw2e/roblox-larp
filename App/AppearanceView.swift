@@ -3,24 +3,36 @@ import BloxKit
 
 struct AppearanceView: View {
     @EnvironmentObject var store: Store
-    @Environment(\.dismiss) private var dismiss
-    var openMenu: (() -> Void)?
+    @Environment(\.scenePhase) private var phase
+    var active = true
+    var openMenu: () -> Void = {}
     var open: (Page) -> Void = { _ in }
 
     @State private var customize = false
     @State private var searching = false
     @State private var query = ""
     @State private var category = "All"
+    @State private var sort = Sort.relevance
     @State private var results: [Item] = []
+    @State private var styles: [Item] = []
+    @State private var next: String?
     @State private var loading = false
     @State private var failure: String?
+    @State private var asked = 0
     @State private var pricing: Item?
     @State private var priceText = ""
+    @State private var priceProblem = ""
     @State private var raised = false
     @GestureState private var pull: CGFloat = 0
+    @FocusState private var typing: Bool
     private let restTop: CGFloat = 316, raisedTop: CGFloat = 48
 
-    private static let categories = ["All": "", "Avatars": "avatar", "Backgrounds": "background", "Body": "body", "Clothing": "shirt"]
+    enum Sort: String, CaseIterable { case relevance = "Relevance", low = "Price: low to high", high = "Price: high to low" }
+
+    private static let categories: [String: String] = [
+        "Avatars": "kfHzJwaNYM8s2CWRqYUhRa", "Backgrounds": "ijFKKMZq6jV4gkJQC4v7L1",
+        "Body": "mwkR3QvDBVzYk4o9RAVVa2", "Clothing": "5G3bZScC9Hxp2D2EUtGSNm",
+    ]
     private let order = ["All", "Avatars", "Backgrounds", "Body", "Clothing"]
     private let grid = [GridItem(.flexible(), spacing: 12, alignment: .top), GridItem(.flexible(), spacing: 12, alignment: .top),
                         GridItem(.flexible(), alignment: .top)]
@@ -34,12 +46,18 @@ struct AppearanceView: View {
             }
         }
         .background(Color.bg)
-        .task { if results.isEmpty { await load() } }
+        .task(id: active) { if active, results.isEmpty { await load() } }
+        .onChange(of: phase) { _, now in
+            if now == .active, active, results.isEmpty, !loading { Task { await load() } }
+        }
         .alert("Price", isPresented: Binding(get: { pricing != nil }, set: { if !$0 { pricing = nil } })) {
             TextField("0 is Free, empty is Off Sale", text: $priceText).keyboardType(.numberPad)
             Button("Save") { savePrice() }
             Button("Cancel", role: .cancel) {}
         } message: { Text(pricing?.name ?? "") }
+        .alert("Price not changed", isPresented: Binding(get: { !priceProblem.isEmpty }, set: { if !$0 { priceProblem = "" } })) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(priceProblem) }
     }
 
     private var stage: some View {
@@ -50,10 +68,13 @@ struct AppearanceView: View {
             topControls
             if store.profile.needsRedraw || store.drawing || !store.drawNote.isEmpty { redrawControl }
             HStack(spacing: 22) {
-                Icon("arrow-curl-to-left", size: 20)
-                Icon("arrow-curl-to-right", size: 20)
+                Button { store.undo() } label: { Icon("arrow-curl-to-left", size: 20) }
+                    .disabled(store.undone.isEmpty).foregroundStyle(store.undone.isEmpty ? Color(white: 0.38) : Color.ink)
+                    .accessibilityIdentifier("undoWear").accessibilityLabel("Undo")
+                Button { store.redo() } label: { Icon("arrow-curl-to-right", size: 20) }
+                    .disabled(store.redone.isEmpty).foregroundStyle(store.redone.isEmpty ? Color(white: 0.38) : Color.ink)
+                    .accessibilityIdentifier("redoWear").accessibilityLabel("Redo")
             }
-            .foregroundStyle(Color(white: 0.38))
             .padding(.horizontal, 12).frame(height: 44).background(Color.pill, in: Capsule())
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             .padding(.leading, 20).padding(.bottom, 33)
@@ -88,18 +109,14 @@ struct AppearanceView: View {
     private var topControls: some View {
         VStack(spacing: 13) {
             HStack(spacing: 0) {
-                Button { if let openMenu { openMenu() } else { dismiss() } } label: {
-                    Icon(openMenu == nil ? "arrow-large-left" : "three-bars-horizontal", size: 25)
-                        .overlay(alignment: .topTrailing) {
-                            if openMenu != nil { Circle().fill(Color.bloxBlue).frame(width: 8, height: 8).offset(x: 1, y: 1) }
-                        }
+                Button(action: openMenu) {
+                    Icon("three-bars-horizontal", size: 25)
+                        .overlay(alignment: .topTrailing) { Circle().fill(Color.bloxBlue).frame(width: 8, height: 8).offset(x: 1, y: 1) }
                 }
-                .accessibilityIdentifier("appearanceBack")
+                .accessibilityIdentifier("appearanceMenu").accessibilityLabel("Menu")
                 Spacer()
-                Button { withAnimation { searching.toggle() } } label: {
-                    Icon("magnifying-glass", size: 25).frame(width: 26)
-                }
-                .accessibilityIdentifier("searchToggle")
+                Button(action: toggleSearch) { Icon("magnifying-glass", size: 25).frame(width: 26) }
+                    .accessibilityIdentifier("searchToggle").accessibilityLabel("Search the Marketplace")
             }
             .frame(height: 28)
             .overlay(tabs)
@@ -107,16 +124,19 @@ struct AppearanceView: View {
             HStack(alignment: .top) {
                 VStack(spacing: 13) {
                     Button { open(.profile) } label: { Headshot(image: store.avatar, crop: store.profile.crop, size: 36) }
-                        .accessibilityIdentifier("pillHeadshot")
-                    Icon("person-standing-gear", size: 24).frame(height: 24)
+                        .accessibilityIdentifier("pillHeadshot").accessibilityLabel("Your profile")
+                    Button { customize = true } label: { Icon("person-standing-gear", size: 24).frame(height: 24) }
+                        .accessibilityIdentifier("avatarSettings").accessibilityLabel("Customize avatar")
                 }
                 .padding(4).padding(.bottom, 6).background(Color.pill, in: Capsule())
                 Spacer()
-                HStack(spacing: 6) {
-                    Icon("robux", size: 17)
-                    Text(short(store.profile.robux)).font(.builder(14.5))
+                Button { open(.robux) } label: {
+                    HStack(spacing: 6) {
+                        Icon("robux", size: 17)
+                        Text(short(store.profile.robux)).font(.builder(14.5))
+                    }
+                    .padding(.horizontal, 16).frame(height: 44).background(Color.pill, in: Capsule())
                 }
-                .padding(.horizontal, 16).frame(height: 44).background(Color.pill, in: Capsule())
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("robuxPill")
             }
@@ -143,25 +163,32 @@ struct AppearanceView: View {
 
     private var sheet: some View {
         VStack(spacing: 0) {
-            Capsule().fill(Color(red: 0.19, green: 0.19, blue: 0.22)).frame(width: 36, height: 4)
-                .padding(.top, 10).padding(.bottom, customize ? 12 : 20)
-                .frame(maxWidth: .infinity).contentShape(Rectangle())
-                .gesture(sheetDrag)
-                .onTapGesture { withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) { raised.toggle() } }
-                .accessibilityIdentifier("sheetHandle")
-            if searching && !customize { searchBar }
-            if !customize { categoryTabs }
+            VStack(spacing: 0) {
+                Capsule().fill(Color(red: 0.19, green: 0.19, blue: 0.22)).frame(width: 36, height: 4)
+                    .padding(.top, 10).padding(.bottom, customize ? 12 : 20)
+                    .frame(maxWidth: .infinity).contentShape(Rectangle())
+                    .onTapGesture { withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) { raised.toggle() } }
+                    .accessibilityIdentifier("sheetHandle").accessibilityLabel(raised ? "Lower the list" : "Raise the list")
+                    .accessibilityAddTraits(.isButton)
+                if searching && !customize { searchBar }
+                if !customize { categoryTabs }
+            }
+            .simultaneousGesture(sheetDrag)
             ScrollView {
                 if customize { inventory } else { marketplace }
             }
+            .refreshable { if !customize { await load() } }
         }
         .background(Color.bg, in: UnevenRoundedRectangle(topLeadingRadius: 16, topTrailingRadius: 16))
     }
 
     private var sheetDrag: some Gesture {
-        DragGesture(minimumDistance: 4, coordinateSpace: .global)
-            .updating($pull) { g, pull, _ in pull = g.translation.height }
+        DragGesture(minimumDistance: 8, coordinateSpace: .global)
+            .updating($pull) { g, pull, _ in
+                pull = abs(g.translation.height) > abs(g.translation.width) ? g.translation.height : 0
+            }
             .onEnded { g in
+                guard abs(g.translation.height) > abs(g.translation.width) else { return }
                 let goingUp = g.predictedEndTranslation.height < -60, goingDown = g.predictedEndTranslation.height > 60
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
                     raised = goingUp ? true : goingDown ? false : raised
@@ -174,11 +201,7 @@ struct AppearanceView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 0) {
                     ForEach(order, id: \.self) { c in
-                        Button {
-                            category = c
-                            query = ""
-                            Task { await load() }
-                        } label: {
+                        Button { choose(c) } label: {
                             VStack(spacing: 7.5) {
                                 Text(c).font(.builder(16, .bold)).frame(height: 20).padding(.horizontal, 11)
                                     .foregroundStyle(category == c ? Color.ink : Color.dim)
@@ -190,51 +213,75 @@ struct AppearanceView: View {
                     }
                 }
             }
-            Icon("three-sliders-horizontal", size: 22).frame(height: 20).padding(.leading, 8).padding(.trailing, 22)
+            Menu {
+                Picker("Sort", selection: $sort) { ForEach(Sort.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
+            } label: {
+                Icon("three-sliders-horizontal", size: 22).frame(height: 20).padding(.leading, 8).padding(.trailing, 22)
+            }
+            .accessibilityIdentifier("sortMenu").accessibilityLabel("Sort")
         }
     }
 
     private var searchBar: some View {
         HStack {
             Icon("magnifying-glass", size: 18).foregroundStyle(Color.faint)
-            TextField("Search the Marketplace", text: $query).submitLabel(.search)
+            TextField("Search the Marketplace", text: $query).submitLabel(.search).focused($typing)
+                .autocorrectionDisabled()
                 .onSubmit { Task { await load() } }
                 .accessibilityIdentifier("catalogSearch")
+            if !query.isEmpty {
+                Button { query = ""; Task { await load() } } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Color.faint) }
+                    .accessibilityLabel("Clear search")
+            }
         }
         .font(.builder(16)).padding(.horizontal, 12).frame(height: 40)
         .background(Color.field, in: RoundedRectangle(cornerRadius: 10))
         .padding(.horizontal, 15).padding(.bottom, 10)
     }
 
+    private var sorted: [Item] {
+        switch sort {
+        case .relevance: results
+        case .low: results.sorted { ($0.price ?? .max) < ($1.price ?? .max) }
+        case .high: results.sorted { ($0.price ?? -1) > ($1.price ?? -1) }
+        }
+    }
+
     private var marketplace: some View {
-        let assets = results.filter { !$0.bundle }
-        let styles = results.filter(\.bundle)
-        let top = category == "All" && query.isEmpty
+        let front = category == "All" && query.isEmpty && sort == .relevance
+        let assets = sorted.filter { !$0.bundle }
         return VStack(alignment: .leading, spacing: 0) {
-            Text(top ? "Recommended For You" : query.isEmpty ? category : "Results").font(.builder(20, .bold))
+            Text(front ? "Recommended For You" : query.isEmpty ? category : "Results").font(.builder(20, .bold))
                 .frame(height: 24).padding(.top, 10.5).padding(.bottom, 12)
-            if loading { ProgressView().frame(maxWidth: .infinity).padding(.bottom, 12) }
-            if let failure { Text(failure).foregroundStyle(Color.faint).padding(.bottom, 12) }
+            if loading && results.isEmpty { ProgressView().tint(Color.faint).frame(maxWidth: .infinity).padding(.bottom, 12) }
+            if let failure { Text(failure).font(.builder(14.5)).foregroundStyle(Color.faint).padding(.bottom, 12).accessibilityIdentifier("catalogFailure") }
             LazyVGrid(columns: grid, spacing: 20) {
-                ForEach(top ? Array(assets.prefix(3)) : results) { catalogTile($0) }
+                ForEach(front ? Array(assets.prefix(3)) : sorted) { catalogTile($0) }
             }
-            if top && !styles.isEmpty { exploreStyles(styles) }
-            if top {
+            if front && !styles.isEmpty { exploreStyles }
+            if front {
                 LazyVGrid(columns: grid, spacing: 20) { ForEach(Array(assets.dropFirst(3))) { catalogTile($0) } }
                     .padding(.top, 26)
+            }
+            if next != nil {
+                ProgressView().tint(Color.faint).frame(maxWidth: .infinity).padding(.top, 24)
+                    .onAppear { Task { await loadMore() } }
             }
         }
         .padding(.leading, 15).padding(.trailing, 14).padding(.bottom, 30)
         .buttonStyle(PressStyle())
     }
 
-    private func exploreStyles(_ styles: [Item]) -> some View {
+    private var exploreStyles: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Explore Styles").font(.builder(20, .bold)).frame(height: 24)
                 Spacer()
-                Text("See All").font(.builder(12, .medium)).frame(width: 55, height: 25)
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.ink, lineWidth: 1))
+                Button { choose("Avatars") } label: {
+                    Text("See All").font(.builder(12, .medium)).frame(width: 55, height: 25)
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.ink, lineWidth: 1))
+                }
+                .accessibilityIdentifier("seeAllStyles")
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 12) { ForEach(styles) { catalogTile($0).frame(width: 115) } }
@@ -252,14 +299,17 @@ struct AppearanceView: View {
     private var inventory: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Inventory").font(.builder(20, .bold)).frame(height: 24).padding(.top, 10)
-            Text("Tap to put on or take off. Hold an item to change its price or remove it.").font(.builder(14.5)).foregroundStyle(Color.faint)
+            Text(store.profile.items.isEmpty ? "Nothing yet. Get items in the Marketplace."
+                 : "Tap to put on or take off. Hold an item to change its price or remove it.")
+                .font(.builder(14.5)).foregroundStyle(Color.faint)
             LazyVGrid(columns: grid, spacing: 20) {
                 ForEach(store.profile.items) { item in
-                    Button { store.profile.wear(item, !item.wearing) } label: { tile(item, showCreator: false) }
+                    Button { store.wear(item, !item.wearing) } label: { tile(item, showCreator: false) }
                         .accessibilityIdentifier("inventoryItem")
                         .contextMenu {
                             Button("Change price") { priceText = item.price.map(String.init) ?? ""; pricing = item }
-                            Button("Remove", role: .destructive) { store.profile.items.removeAll { $0 == item } }
+                            Button("Open its page") { open(.item(item)) }
+                            Button("Remove", role: .destructive) { store.profile.items.removeAll { $0.same(item) } }
                         }
                 }
             }
@@ -275,27 +325,79 @@ struct AppearanceView: View {
                 if worn {
                     Image(systemName: "checkmark.circle.fill").font(.builder(24))
                         .foregroundStyle(.white, Color.bloxBlue).padding(6)
+                        .accessibilityLabel("Wearing")
                 }
             }
     }
 
+    private func choose(_ c: String) {
+        customize = false
+        category = c
+        query = ""
+        Task { await load() }
+    }
+
+    private func toggleSearch() {
+        customize = false
+        withAnimation { searching.toggle() }
+        if searching {
+            typing = true
+        } else if !query.isEmpty {
+            query = ""
+            Task { await load() }
+        }
+    }
+
     private func load() async {
+        asked += 1
+        let mine = asked
+        let q = query.trimmingCharacters(in: .whitespaces), taxonomy = Self.categories[category]
         loading = true
         failure = nil
-        let q = query.trimmingCharacters(in: .whitespaces)
-        do {
-            results = try await Roblox.search(q.isEmpty ? Self.categories[category] ?? "" : q)
-            if results.isEmpty { failure = "Nothing found." }
-        } catch {
-            failure = error.localizedDescription
+        for (attempt, pause) in [0, 2, 5].enumerated() {
+            if attempt > 0 { try? await Task.sleep(for: .seconds(pause)) }
+            guard mine == asked else { return }
+            do {
+                let page = try await Roblox.search(q, category: taxonomy)
+                guard mine == asked else { return }
+                results = page.items
+                next = page.next
+                failure = page.items.isEmpty ? "Nothing found." : nil
+                break
+            } catch {
+                guard mine == asked else { return }
+                failure = error.localizedDescription
+            }
         }
         loading = false
+        if styles.isEmpty, let page = try? await Roblox.search("", category: Self.categories["Avatars"]) {
+            styles = page.items
+        }
+    }
+
+    private func loadMore() async {
+        guard let cursor = next, !loading else { return }
+        let mine = asked
+        loading = true
+        defer { loading = false }
+        guard let page = try? await Roblox.search(query.trimmingCharacters(in: .whitespaces), category: Self.categories[category], cursor: cursor),
+              mine == asked else { return }
+        results += page.items.filter { new in !results.contains { $0.same(new) } }
+        next = page.next
     }
 
     private func savePrice() {
-        guard let item = pricing, let i = store.profile.items.firstIndex(of: item) else { return }
+        defer { pricing = nil }
+        guard let item = pricing else { return }
+        guard let i = store.profile.items.firstIndex(where: { $0.same(item) }) else {
+            priceProblem = "\(item.name) is no longer in your inventory."
+            return
+        }
         let t = priceText.trimmingCharacters(in: .whitespaces)
+        guard t.isEmpty || t == digits(in: t) else {
+            priceProblem = "A price is digits only, like 1500. Leave it empty for Off Sale."
+            return
+        }
         store.profile.items[i].price = t.isEmpty ? nil : number(from: t)
-        pricing = nil
     }
 }

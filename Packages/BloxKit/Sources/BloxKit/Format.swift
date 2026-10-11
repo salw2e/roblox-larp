@@ -2,7 +2,7 @@ import Foundation
 
 public func short(_ n: Int) -> String {
     if abs(n) < 1000 { return "\(n)" }
-    let units: [(Double, String)] = [(1e9, "B"), (1e6, "M"), (1e3, "K")]
+    let units: [(Double, String)] = [(1e12, "T"), (1e9, "B"), (1e6, "M"), (1e3, "K")]
     let v = Double(abs(n))
     for (i, (size, suffix)) in units.enumerated() where v >= size {
         let rounded = (v / size * 10).rounded() / 10
@@ -31,7 +31,14 @@ public func grouped(_ n: Int) -> String {
     return (n < 0 ? "-" : "") + out
 }
 
+public func digits(in text: String) -> String {
+    String(text.filter { $0.isASCII && $0.isNumber }.prefix(15))
+}
+
 public func number(from text: String) -> Int {
-    let digits = text.filter(\.isNumber).prefix(15)
-    return Int(digits) ?? 0
+    Int(digits(in: text)) ?? 0
+}
+
+public func cleanUsername(_ text: String) -> String {
+    String(text.filter { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_") }.prefix(20))
 }

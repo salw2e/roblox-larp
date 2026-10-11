@@ -19,6 +19,8 @@ final class FormatTests: XCTestCase {
         XCTAssertEqual(short(2_000_000), "2M")
         XCTAssertEqual(short(1_250_000_000), "1.3B")
         XCTAssertEqual(short(-1500), "-1.5K")
+        XCTAssertEqual(short(1_000_000_000_000), "1T")                  // not "1000B"
+        XCTAssertEqual(short(999_999_999_999_999), "1000T")             // the most a number box holds
     }
 
     func testPriceAndNumber() {
@@ -35,6 +37,10 @@ final class FormatTests: XCTestCase {
         XCTAssertEqual(number(from: "55,488"), 55488)
         XCTAssertEqual(number(from: "abc"), 0)
         XCTAssertEqual(number(from: String(repeating: "9", count: 40)), 999_999_999_999_999)
+        XCTAssertEqual(digits(in: "12a3" + String(repeating: "4", count: 30)).count, 15)
+        XCTAssertEqual(number(from: "\u{0663}\u{00B2}\u{00BD}7"), 7)
+        XCTAssertEqual(cleanUsername("sal w2e!_99\u{0663}"), "salw2e_99")
+        XCTAssertEqual(cleanUsername(String(repeating: "a", count: 30)).count, 20)
     }
 }
 
@@ -52,6 +58,75 @@ final class ProfileTests: XCTestCase {
         p.wear(Item(id: 5, bundle: true, name: "Pack", price: 0))
         XCTAssertEqual(p.items.count, 2)
         XCTAssertEqual(p.wearing.map(\.name), ["Pack"])
+    }
+
+    func testOldSaveWithOlderNestedShapesLoads() throws {
+        let old = #"{"username":"sal","crop":{"x":0.1},"items":[{"id":5,"name":"Hat","price":7,"wearing":true}],"friendList":[{"id":9,"name":"kuromi","displayName":"kuromi"}],"trades":[{"id":3,"partner":{"id":9,"name":"kuromi"},"giving":[{"id":5,"name":"Hat"}]}],"notices":[{"id":4,"text":"hi"}],"chats":{"9":[{"mine":true,"text":"yo"}]},"ledger":{"Purchases":7}}"#
+        let p = try XCTUnwrap(Profile.load(Data(old.utf8)))
+        XCTAssertEqual(p.username, "sal")
+        XCTAssertEqual(p.crop.x, 0.1)
+        XCTAssertEqual(p.crop.scale, Crop().scale)
+        XCTAssertEqual(p.items[0].creator, "Roblox")
+        XCTAssertEqual(p.items[0].price, 7)
+        XCTAssertTrue(p.items[0].wearing)
+        XCTAssertEqual(p.friendList[0].status, "")
+        XCTAssertEqual(p.trades[0].partner.displayName, "")
+        XCTAssertEqual(p.trades[0].giving[0].name, "Hat")
+        XCTAssertEqual(p.trades[0].receiving, [])
+        XCTAssertEqual(p.trades[0].status, .inbound)
+        XCTAssertEqual(p.notices[0].when, "")
+        XCTAssertEqual(p.chat(with: 9), [ChatLine(mine: true, text: "yo")])
+        XCTAssertEqual(p.ledger, ["Purchases": 7])
+        XCTAssertEqual(p.games, [])
+        XCTAssertEqual(p.experiences, [])
+        XCTAssertEqual(Profile.load(Data("{}".utf8)), Profile())
+    }
+
+    func testCropStaysInTheCircle() {
+        XCTAssertEqual(Crop().clamped, Crop())
+        XCTAssertEqual(Crop(scale: 20, x: 99, y: -99).clamped, Crop(scale: 8, x: 4, y: -4))
+        XCTAssertEqual(Crop(scale: 0.1, x: 0.3, y: 0).clamped, Crop(scale: 0.8, x: 0.3, y: 0))
+    }
+
+    func testNamesAndCopiedItems() {
+        var p = Profile()
+        p.displayName = "  "
+        p.username = "sal"
+        XCTAssertEqual(p.shownName, "sal")
+        p.username = ""
+        XCTAssertEqual(p.shownName, "Player")
+        XCTAssertEqual(p.shownUsername, "Player")
+        XCTAssertEqual(p.buy(Item(id: 1, name: "Bought", price: 0)), .bought)
+        p.adopt(copiedItems: [Item(id: 2, name: "A", price: 0), Item(id: 3, name: "B", price: 0)])
+        XCTAssertEqual(p.items.map(\.id), [1, 2, 3])
+        XCTAssertEqual(p.wearing.map(\.id), [2, 3])
+        p.adopt(copiedItems: [Item(id: 3, name: "B", price: 0), Item(id: 1, name: "Bought", price: 0)])
+        XCTAssertEqual(p.items.map(\.id), [1, 3])
+        XCTAssertEqual(Set(p.wearing.map(\.id)), [1, 3])
+        XCTAssertNil(p.items[0].copied)
+    }
+
+    func testRemovingAFriendCleansUp() {
+        var p = Profile()
+        p.friendList = [Friend(id: 7, name: "a", displayName: "A"), Friend(id: 8, name: "b", displayName: "B")]
+        p.say("hi", to: 7, mine: true)
+        p.say("hi", to: 8, mine: true)
+        p.notices = [Notice(id: p.newId(), text: "x", when: "", friend: 7)]
+        p.removeFriend(7)
+        XCTAssertEqual(p.friendList.map(\.id), [8])
+        XCTAssertEqual(p.chat(with: 7), [])
+        XCTAssertEqual(p.chat(with: 8).count, 1)
+        XCTAssertNil(p.notices[0].friend)
+    }
+
+    func testIdsAreNeverReused() {
+        var p = Profile()
+        let a = p.newId(), b = p.newId()
+        XCTAssertEqual([a, b], [1, 2])
+        p.trades = [Trade(id: 40, partner: Friend(id: 1, name: "x", displayName: "X"))]
+        XCTAssertEqual(p.newId(), 41)
+        p.trades = []
+        XCTAssertEqual(p.newId(), 42)
     }
 
     func testOldSaveStillLoads() throws {
@@ -95,9 +170,11 @@ final class ParseTests: XCTestCase {
         XCTAssertEqual(limited.name, "Fiery Horns of the Netherworld")
         XCTAssertGreaterThan(limited.price ?? 0, 1_000_000)
         XCTAssertEqual(limited.creator, "Roblox")
+        XCTAssertEqual(limited.limited, true)
         let hat = try XCTUnwrap(Parse.asset(try fixture("economy-1080951")))
         XCTAssertEqual(hat.name, "Builders Club Hard Hat")
         XCTAssertNil(hat.price)                         // off sale
+        XCTAssertNil(hat.limited)
     }
 
     func testCatalog() throws {
@@ -105,6 +182,13 @@ final class ParseTests: XCTestCase {
         XCTAssertEqual(items.count, 30)
         XCTAssertEqual(items.filter(\.bundle).map(\.id), [741196])
         XCTAssertEqual(items.first?.price, 95)
+        let devil = try XCTUnwrap(items.first { $0.name.contains("horns") && $0.limited == true })
+        XCTAssertEqual(devil.price, 225)                                   // launched at 95
+        XCTAssertEqual(items.filter { $0.limited == true }.map(\.price), [225, 199, 9_999_999_999])   // 199: still on sale
+        XCTAssertNil(items.first?.limited)
+        XCTAssertNotNil(Parse.catalogCursor(try fixture("search")))
+        XCTAssertNil(Parse.catalogCursor(Data(#"{"nextPageCursor":"","data":[]}"#.utf8)))
+        XCTAssertNil(Parse.catalogCursor(Data(#"{"nextPageCursor":null,"data":[]}"#.utf8)))
         XCTAssertEqual(items.filter { $0.creatorVerified == true }.count, 11)
         XCTAssertTrue(Item(id: 1, name: "x", price: 0).showsCreatorCheck)                     // Roblox's own
         XCTAssertFalse(Item(id: 1, name: "x", creator: "Asche", price: 0).showsCreatorCheck)
@@ -224,6 +308,9 @@ final class MeshTests: XCTestCase {
         XCTAssertEqual(m.bounds.max, [1, 1, 0])
         XCTAssertEqual(parseObj("").parts, [])
         XCTAssertEqual(parseObj("v 0 0 0\nv 1 0 0\nv 0 1 0\nf -3 -2 -1").parts.first?.indices, [0, 1, 2])   // ids from the end, no uv
+        let rel = parseObj("v 0 0 0\nv 1 0 0\nv 0 1 0\nf -3 -2 -1\nv 5 5 5\nf 1 2 -1")
+        XCTAssertEqual(rel.corners, 4)
+        XCTAssertEqual(rel.parts.first?.indices, [0, 1, 2, 0, 1, 3])
     }
 
     func testRealAvatar() throws {
@@ -259,7 +346,8 @@ final class ExtrasTests: XCTestCase {
         XCTAssertEqual(p.buy(hat), .bought)
         XCTAssertEqual(p.robux, 700)
         XCTAssertEqual(p.ledger["Purchases"], 300)
-        XCTAssertEqual(p.wearing.map(\.id), [1])
+        XCTAssertEqual(p.items.map(\.id), [1])
+        XCTAssertTrue(p.wearing.isEmpty)                                // bought, not put on
         XCTAssertEqual(p.buy(hat), .alreadyOwned)                       // not charged twice
         XCTAssertEqual(p.robux, 700)
         XCTAssertEqual(p.buy(Item(id: 2, name: "Dominus", price: 701)), .tooExpensive)
@@ -282,6 +370,11 @@ final class ExtrasTests: XCTestCase {
         XCTAssertEqual(p.robux, 4500)
         XCTAssertEqual(p.total(Ledger.incoming), 4600)
         XCTAssertEqual(p.total(Ledger.outgoing), 0)
+        XCTAssertEqual(Ledger.amount(3000, in: "Past Month"), 3000)
+        XCTAssertEqual(Ledger.amount(3000, in: "Past Day"), 100)
+        XCTAssertEqual(Ledger.amount(3000, in: "Past Week"), 700)
+        XCTAssertEqual(Ledger.amount(3000, in: "Past Year"), 36000)
+        XCTAssertEqual(Ledger.periods.count, 4)
     }
 
     func testTrades() {
@@ -290,13 +383,17 @@ final class ExtrasTests: XCTestCase {
         let mine = Item(id: 1, name: "Mine", price: 1000), keep = Item(id: 2, name: "Keep", price: 5), theirs = Item(id: 9, name: "Theirs", price: 4000, wearing: true)
         p.wear(mine)
         p.wear(keep)
-        var t = Trade(id: p.nextId, partner: Friend(id: 7, name: "x", displayName: "X"))
+        var t = Trade(id: p.newId(), partner: Friend(id: 7, name: "x", displayName: "X"))
         t.giving = [mine]
         t.receiving = [theirs]
         t.giveRobux = 40
         t.getRobux = 10
         XCTAssertEqual(t.giveValue, 1040)
         XCTAssertEqual(t.getValue, 4010)
+        XCTAssertEqual(p.giveValue(of: t), 1040)
+        p.items[0].price = 2000
+        XCTAssertEqual(p.giveValue(of: t), 2040)
+        p.items[0].price = 1000
         t.status = .outbound
         p.trades = [t]
         XCTAssertFalse(p.accept(trade: t.id))
@@ -311,7 +408,19 @@ final class ExtrasTests: XCTestCase {
         XCTAssertEqual(p.items.last?.wearing, false)                     // a traded item arrives unworn
         XCTAssertEqual(p.trades[0].status, .completed)
         XCTAssertFalse(p.accept(trade: t.id))                            // and not twice
-        XCTAssertEqual(p.nextId, 2)
+        XCTAssertFalse(p.complete(trade: t.id))
+        XCTAssertEqual(p.giveValue(of: p.trades[0]), 1040)
+        var out = Trade(id: p.newId(), partner: Friend(id: 7, name: "x", displayName: "X"))
+        out.status = .outbound
+        out.giving = [keep]
+        out.getRobux = 5
+        p.trades.append(out)
+        XCTAssertFalse(p.accept(trade: out.id))
+        XCTAssertTrue(p.complete(trade: out.id))
+        XCTAssertEqual(p.items.map(\.id), [9])
+        XCTAssertEqual(p.robux, 25)
+        XCTAssertFalse(p.complete(trade: out.id))
+        XCTAssertEqual(p.robux, 25)
     }
 
     func testChat() {
@@ -319,7 +428,9 @@ final class ExtrasTests: XCTestCase {
         p.say("  hi  ", to: 7, mine: true)
         p.say("   ", to: 7, mine: true)
         p.say("yo", to: 7, mine: false)
-        XCTAssertEqual(p.chat(with: 7), [ChatLine(mine: true, text: "hi"), ChatLine(mine: false, text: "yo")])
+        XCTAssertEqual(p.chat(with: 7).map(\.text), ["hi", "yo"])
+        XCTAssertEqual(p.chat(with: 7).map(\.mine), [true, false])
+        XCTAssertEqual(Set(p.chat(with: 7).compactMap(\.id)).count, 2)   // each line has its own id
         XCTAssertEqual(p.chat(with: 8), [])
         XCTAssertEqual(Profile.load(try! JSONEncoder().encode(p))?.chat(with: 7).count, 2)   // survives a save
     }
@@ -328,6 +439,13 @@ final class ExtrasTests: XCTestCase {
         let g = try XCTUnwrap(Parse.gameInfo(try fixture("game-details")))
         XCTAssertEqual(g.creator, "Uplift Games")
         XCTAssertEqual(g.created, "7/14/2017")
+        XCTAssertEqual(Parse.day("2017-07-14T19:26:21.347Z", zone: TimeZone(identifier: "Asia/Phnom_Penh")!), "7/15/2017")   // already the 15th there
+        XCTAssertEqual(Parse.day("2017-07-14T19:26:21Z", zone: TimeZone(identifier: "UTC")!), "7/14/2017")
+        XCTAssertEqual(Parse.day("garbage"), "")
+        XCTAssertEqual(Parse.votes(try fixture("votes"))[383310974], 86)
+        XCTAssertGreaterThan(Parse.playing(try fixture("game-details"))[383310974] ?? 0, 0)
+        XCTAssertEqual(Parse.itemInfo(Data(#"{"AssetTypeId":92}"#.utf8))?.type, "Background")
+        XCTAssertEqual(Parse.itemInfo(Data(#"{"AssetTypeId":12345}"#.utf8))?.type, "")       // unknown: no made-up label
         XCTAssertGreaterThan(g.visits, 40_000_000_000)                   // needs 64-bit numbers
         XCTAssertGreaterThan(g.favorites, 1_000_000)
         XCTAssertEqual(g.maxPlayers, 35)

@@ -8,27 +8,66 @@ enum ModelFiles {
     static var exists: Bool { FileManager.default.fileExists(atPath: obj.path) }
 
     static func install(_ look: Look) async throws {
-        let fresh = Store.dir.appendingPathComponent("model.new", isDirectory: true)
-        try? FileManager.default.removeItem(at: fresh)
-        try FileManager.default.createDirectory(at: fresh, withIntermediateDirectories: true)
+        let files = FileManager.default
+        let fresh = Store.dir.appendingPathComponent("model.new-\(UUID().uuidString)", isDirectory: true)
+        defer { try? files.removeItem(at: fresh) }
+        try files.createDirectory(at: fresh, withIntermediateDirectories: true)
         for link in [look.obj, look.mtl] + look.textures {
-            guard let url = URL(string: link) else { throw BloxError.offline }
+            guard let url = URL(string: link) else { throw BloxError.said("The avatar service sent a model the app can't read.") }
             try await Roblox.fetch(url).write(to: fresh.appendingPathComponent(url.lastPathComponent))
         }
-        try? FileManager.default.removeItem(at: dir)
-        try FileManager.default.moveItem(at: fresh, to: dir)
+        guard let model = await AvatarScene.read(fresh) else { throw BloxError.said("The avatar service sent a model the app can't read.") }
+        let old = Store.dir.appendingPathComponent("model.old", isDirectory: true)
+        try? files.removeItem(at: old)
+        let had = files.fileExists(atPath: dir.path)
+        if had { try files.moveItem(at: dir, to: old) }
+        do {
+            try files.moveItem(at: fresh, to: dir)
+        } catch {
+            if had { try? files.moveItem(at: old, to: dir) }     // put the previous model back
+            throw error
+        }
+        try? files.removeItem(at: old)
+        await AvatarScene.use(model)
     }
 
     static func wipe() { try? FileManager.default.removeItem(at: dir) }
 }
 
-enum AvatarScene {
-    static func build() -> (node: SCNNode, min: [Float], max: [Float])? {
-        guard let obj = try? String(contentsOf: ModelFiles.obj, encoding: .utf8) else { return nil }
-        let mesh = parseObj(obj)
-        guard mesh.corners > 0, !mesh.parts.isEmpty else { return nil }
-        let mtl = (try? String(contentsOf: ModelFiles.dir.appendingPathComponent("a.mtl"), encoding: .utf8)).map(parseMtl) ?? [:]
+struct AvatarModel: @unchecked Sendable {
+    let mesh: Mesh
+    let materials: [String: MeshMaterial]
+    let pictures: [String: UIImage]
+}
 
+@MainActor
+enum AvatarScene {
+    private static var shared: (geometry: SCNGeometry, min: [Float], max: [Float])?
+
+    nonisolated static func read(_ folder: URL) async -> AvatarModel? {
+        await Task.detached(priority: .userInitiated) { () -> AvatarModel? in
+            guard let obj = try? String(contentsOf: folder.appendingPathComponent("a.obj"), encoding: .utf8) else { return nil }
+            let mesh = parseObj(obj)
+            guard mesh.corners > 0, !mesh.parts.isEmpty else { return nil }
+            let materials = (try? String(contentsOf: folder.appendingPathComponent("a.mtl"), encoding: .utf8)).map(parseMtl) ?? [:]
+            var pictures: [String: UIImage] = [:]
+            for file in Set(materials.values.compactMap(\.texture)) {
+                if let data = try? Data(contentsOf: folder.appendingPathComponent(file)) { pictures[file] = UIImage(data: data) }
+            }
+            return AvatarModel(mesh: mesh, materials: materials, pictures: pictures)
+        }.value
+    }
+
+    static func prepare() async -> Bool {
+        guard let model = await read(ModelFiles.dir) else { return false }
+        use(model)
+        return true
+    }
+
+    static func forget() { shared = nil }
+
+    static func use(_ model: AvatarModel) {
+        let mesh = model.mesh
         func source(_ values: [Float], _ semantic: SCNGeometrySource.Semantic, _ width: Int) -> SCNGeometrySource {
             let data = values.withUnsafeBufferPointer { Data(buffer: $0) }
             return SCNGeometrySource(data: data, semantic: semantic, vectorCount: values.count / width, usesFloatComponents: true,
@@ -41,29 +80,26 @@ enum AvatarScene {
         }
         let geometry = SCNGeometry(sources: [source(mesh.positions, .vertex, 3), source(mesh.normals, .normal, 3),
                                              source(mesh.uvs, .texcoord, 2)], elements: elements)
-        var pictures: [String: UIImage] = [:]
         geometry.materials = mesh.parts.map { part in
             let m = SCNMaterial()
             m.lightingModel = .lambert
             m.isDoubleSided = true
-            let info = mtl[part.material]
-            if let file = info?.texture {
-                if pictures[file] == nil { pictures[file] = UIImage(contentsOfFile: ModelFiles.dir.appendingPathComponent(file).path) }
-                m.diffuse.contents = pictures[file]
+            let info = model.materials[part.material]
+            if let file = info?.texture, let picture = model.pictures[file] {
+                m.diffuse.contents = picture
                 m.diffuse.mipFilter = .linear
-            }
-            if m.diffuse.contents == nil, let c = info?.colour {
+            } else if let c = info?.colour {
                 m.diffuse.contents = UIColor(red: CGFloat(c[0]), green: CGFloat(c[1]), blue: CGFloat(c[2]), alpha: 1)
             }
             return m
         }
         let b = mesh.bounds
-        return (SCNNode(geometry: geometry), b.min, b.max)
+        shared = (geometry, b.min, b.max)
     }
 
     static func make() -> (scene: SCNScene, turntable: SCNNode, eye: SCNNode)? {
-        guard let built = build() else { return nil }
-        let model = built.node, lo = built.min, hi = built.max
+        guard let built = shared else { return nil }
+        let model = SCNNode(geometry: built.geometry), lo = built.min, hi = built.max
         guard hi[1] > lo[1] else { return nil }
         model.position = SCNVector3(-(lo[0] + hi[0]) / 2, -(lo[1] + hi[1]) / 2, -(lo[2] + hi[2]) / 2)
         let turntable = SCNNode()
@@ -118,6 +154,7 @@ struct Avatar3DView: UIViewRepresentable {
         view.antialiasingMode = .multisampling4X
         view.isAccessibilityElement = true
         view.accessibilityIdentifier = "avatar3D"
+        view.accessibilityLabel = "Your avatar. Drag sideways to turn it."
         let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Turner.pan(_:)))
         pan.delegate = context.coordinator
         view.addGestureRecognizer(pan)
@@ -164,8 +201,9 @@ struct Avatar3DView: UIViewRepresentable {
 
 struct AvatarStage: View {
     @EnvironmentObject var store: Store
+    var flat = false
     var body: some View {
-        if store.modelVersion > 0 {
+        if store.modelVersion > 0, !flat {
             Avatar3DView(version: store.modelVersion)
         } else {
             AvatarPicture(image: store.avatar)

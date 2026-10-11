@@ -13,6 +13,7 @@ struct EditProfileView: View {
     @State private var friendName = ""
     @State private var addingFriend = false
     @State private var friendStatus = ""
+    @State private var photoStatus = ""
 
     var body: some View {
         NavigationStack {
@@ -28,7 +29,7 @@ struct EditProfileView: View {
                     menuCounts
                     gamesLink
                 }
-                .padding(22).padding(.bottom, 280)
+                .padding(22).padding(.bottom, 20)
             }
             .scrollDismissesKeyboard(.interactively)
             .background(Color.bg)
@@ -40,12 +41,22 @@ struct EditProfileView: View {
         }
         .sheet(isPresented: $cropping) { CropView() }
         .onChange(of: photo) { _, item in
+            guard let item else { return }
             Task {
-                if let data = try? await item?.loadTransferable(type: Data.self) {
-                    copyStatus = store.setAvatar(data) ? "Picture set from Photos." : "That file isn't a picture."
+                if let data = try? await item.loadTransferable(type: Data.self), store.usePhoto(data) {
+                    photoStatus = "Picture set. It replaces the copied avatar everywhere, 3D model included."
+                } else {
+                    photoStatus = "That picture couldn't be used. Try another one."
                 }
+                photo = nil
             }
         }
+        .onDisappear(perform: tidyNames)
+    }
+
+    private func tidyNames() {
+        if store.profile.username.isEmpty { store.profile.username = "Player" }
+        if store.profile.displayName.trimmingCharacters(in: .whitespaces).isEmpty { store.profile.displayName = store.profile.username }
     }
 
     private var titleBar: some View {
@@ -54,9 +65,14 @@ struct EditProfileView: View {
                 Text("Edit — Profile").font(.builder(21, .bold))
                 Spacer()
                 Button { dismiss() } label: { Image(systemName: "xmark").font(.builder(19, .medium)) }
-                    .accessibilityIdentifier("closeEdit")
+                    .accessibilityIdentifier("closeEdit").accessibilityLabel("Close")
             }
             .padding(.horizontal, 22).padding(.vertical, 14)
+            if !store.saveProblem.isEmpty {
+                Text(store.saveProblem).font(.builder(12)).foregroundStyle(.white).frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 22).padding(.vertical, 8).background(Color.red.opacity(0.8))
+                    .accessibilityIdentifier("saveProblem")
+            }
             Divider()
         }
         .background(Color.bg)
@@ -66,8 +82,14 @@ struct EditProfileView: View {
         VStack(alignment: .leading, spacing: 10) {
             heading("Account")
             HStack(spacing: 10) {
-                labelled("Username") { TextField("", text: $store.profile.username).field().accessibilityIdentifier("usernameField") }
-                labelled("Display name") { TextField("", text: $store.profile.displayName).field().accessibilityIdentifier("displayNameField") }
+                labelled("Username") {
+                    TextField("", text: Binding(get: { store.profile.username }, set: { store.profile.username = cleanUsername($0) }))
+                        .field().accessibilityIdentifier("usernameField")
+                }
+                labelled("Display name") {
+                    TextField("", text: Binding(get: { store.profile.displayName }, set: { store.profile.displayName = String($0.prefix(20)) }))
+                        .field().accessibilityIdentifier("displayNameField")
+                }
             }
             .textInputAutocapitalization(.never).autocorrectionDisabled()
             labelled("Robux") { NumberField(value: $store.profile.robux, id: "robuxField") }
@@ -156,6 +178,7 @@ struct EditProfileView: View {
             }
             if !copyStatus.isEmpty { caption(copyStatus).accessibilityIdentifier("copyStatus") }
             PhotosPicker(selection: $photo, matching: .images) { grayButton("Choose a picture from Photos") }
+            if !photoStatus.isEmpty { caption(photoStatus).accessibilityIdentifier("photoStatus") }
         }
         .padding(.top, 8)
     }
@@ -186,9 +209,10 @@ struct EditProfileView: View {
                         TextField("Status line (the game they're in)", text: $f.status).font(.builder(14))
                     }
                     Toggle("", isOn: $f.online).labelsHidden().tint(.green)
-                    Button { store.profile.friendList.removeAll { $0.id == f.id } } label: {
+                    Button { store.profile.removeFriend(f.id) } label: {
                         Image(systemName: "trash").foregroundStyle(Color.faint)
                     }
+                    .accessibilityLabel("Remove \(f.displayName)")
                 }
                 .padding(10).background(Color.field, in: RoundedRectangle(cornerRadius: 10))
                 .accessibilityIdentifier("friendRow")
@@ -220,8 +244,7 @@ struct EditProfileView: View {
         friendStatus = ""
         Task {
             do {
-                try await store.addFriend(name)
-                friendStatus = "Added \(name)."
+                friendStatus = try await store.addFriend(name) ? "Added \(name)." : "\(name) is already in your friends."
                 friendName = ""
             } catch {
                 friendStatus = error.localizedDescription
@@ -319,8 +342,7 @@ struct CropView: View {
         DragGesture().onChanged { g in
             let s = dragStart ?? store.profile.crop
             dragStart = s
-            store.profile.crop.x = s.x + g.translation.width / size
-            store.profile.crop.y = s.y + g.translation.height / size
+            store.profile.crop = Crop(scale: store.profile.crop.scale, x: s.x + g.translation.width / size, y: s.y + g.translation.height / size).clamped
         }
         .onEnded { _ in dragStart = nil }
     }
@@ -329,7 +351,7 @@ struct CropView: View {
         MagnifyGesture().onChanged { g in
             let s = pinchStart ?? store.profile.crop
             pinchStart = s
-            store.profile.crop.scale = min(max(s.scale * g.magnification, 0.8), 8)
+            store.profile.crop = Crop(scale: s.scale * g.magnification, x: store.profile.crop.x, y: store.profile.crop.y).clamped
         }
         .onEnded { _ in pinchStart = nil }
     }

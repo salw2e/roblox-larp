@@ -38,7 +38,11 @@ struct PlainNumberField: View {
             .keyboardType(.numberPad).multilineTextAlignment(.trailing)
             .accessibilityIdentifier(id)
             .onAppear { text = value == 0 ? "" : "\(value)" }
-            .onChange(of: text) { _, t in value = number(from: t) }
+            .onChange(of: text) { _, t in
+                let kept = digits(in: t)
+                if kept != t { text = kept }
+                value = number(from: kept)
+            }
     }
 }
 
@@ -58,8 +62,9 @@ struct NoticesEditor: View {
                     ForEach(store.profile.friendList) { Text($0.displayName).tag(Int64?.some($0.id)) }
                 }
                 Button("Add") {
-                    store.profile.notices.insert(Notice(id: store.profile.nextId, text: text.trimmingCharacters(in: .whitespacesAndNewlines), when: when, friend: friend), at: 0)
-                    store.profile.notifications += 1
+                    let id = store.profile.newId()
+                    store.profile.notices.insert(Notice(id: id, text: text.trimmingCharacters(in: .whitespacesAndNewlines), when: when, friend: friend), at: 0)
+                    store.profile.notifications += 1          // the bell counts it
                     text = ""
                 }
                 .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -72,7 +77,10 @@ struct NoticesEditor: View {
                         Text(n.when).font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                .onDelete { store.profile.notices.remove(atOffsets: $0) }
+                .onDelete { gone in
+                    store.profile.notices.remove(atOffsets: gone)
+                    store.profile.notifications = min(max(store.profile.notifications - gone.count, 0), store.profile.notices.count)
+                }
                 .onMove { store.profile.notices.move(fromOffsets: $0, toOffset: $1) }
             }
         }
@@ -120,7 +128,9 @@ struct TradesEditor: View {
         status = ""
         Task {
             do {
-                store.profile.trades.insert(Trade(id: store.profile.nextId, partner: try await Roblox.person(name)), at: 0)
+                let person = try await Roblox.person(name)
+                let id = store.profile.newId()
+                store.profile.trades.insert(Trade(id: id, partner: person), at: 0)
                 partner = ""
                 status = "Created. Open it below to add items."
             } catch {
@@ -135,23 +145,40 @@ struct TradeEditor: View {
     @EnvironmentObject var store: Store
     let id: Int
     @State private var picking = false
+    @State private var note = ""
+
+    private var status: Binding<TradeStatus> {
+        Binding(get: { store.profile.trades.first { $0.id == id }?.status ?? .inactive }, set: { new in
+            guard let i = store.profile.trades.firstIndex(where: { $0.id == id }), store.profile.trades[i].status != new else { return }
+            if new == .completed {
+                note = store.profile.complete(trade: id) ? "Completed: the items and Robux have moved." : "Not completed: you don't have enough Robux for this trade."
+            } else if store.profile.trades[i].status == .completed {
+                note = "A completed trade stays completed: its items have already moved."
+            } else {
+                store.profile.trades[i].status = new
+                note = ""
+            }
+        })
+    }
 
     var body: some View {
         if let i = store.profile.trades.firstIndex(where: { $0.id == id }) {
             let trade = $store.profile.trades[i]
             Form {
                 Section {
-                    Picker("Status", selection: trade.status) {
+                    Picker("Status", selection: status) {
                         ForEach(TradeStatus.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
                     }
+                    .accessibilityIdentifier("tradeStatus")
+                    if !note.isEmpty { Text(note).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("tradeEditNote") }
                     TextField("When, e.g. 10/11/2026", text: trade.when)
                 }
                 Section("You give (from your inventory)") {
                     if store.profile.items.isEmpty { Text("Your inventory is empty.").foregroundStyle(.secondary) }
                     ForEach(store.profile.items) { item in
-                        let on = trade.wrappedValue.giving.contains { $0.id == item.id && $0.bundle == item.bundle }
+                        let on = trade.wrappedValue.giving.contains { $0.same(item) }
                         Button {
-                            if on { trade.wrappedValue.giving.removeAll { $0.id == item.id && $0.bundle == item.bundle } } else { trade.wrappedValue.giving.append(item) }
+                            if on { trade.wrappedValue.giving.removeAll { $0.same(item) } } else { trade.wrappedValue.giving.append(item) }
                         } label: {
                             HStack {
                                 Text(item.name)
@@ -179,7 +206,7 @@ struct TradeEditor: View {
             .navigationTitle("Trade with \(trade.wrappedValue.partner.displayName)")
             .sheet(isPresented: $picking) {
                 ItemPicker { item in
-                    if !trade.wrappedValue.receiving.contains(where: { $0.id == item.id && $0.bundle == item.bundle }) {
+                    if !trade.wrappedValue.receiving.contains(where: { $0.same(item) }) {
                         trade.wrappedValue.receiving.append(item)
                     }
                 }
@@ -202,7 +229,8 @@ struct ItemPicker: View {
     @State private var query = ""
     @State private var results: [Item] = []
     @State private var note = ""
-    @State private var picked: Set<Int64> = []
+    @State private var picked: Set<String> = []
+    @State private var asked = 0
 
     var body: some View {
         NavigationStack {
@@ -213,11 +241,11 @@ struct ItemPicker: View {
                     ForEach(results) { item in
                         Button {
                             pick(item)
-                            picked.insert(item.id)
+                            picked.insert(item.key)
                         } label: {
                             ItemCard(item: item, showCreator: true)
                                 .overlay(alignment: .topTrailing) {
-                                    if picked.contains(item.id) {
+                                    if picked.contains(item.key) {
                                         Image(systemName: "checkmark.circle.fill").font(.system(size: 24)).foregroundStyle(.white, Color.bloxBlue).padding(6)
                                     }
                                 }
@@ -239,11 +267,16 @@ struct ItemPicker: View {
     }
 
     private func load() async {
+        asked += 1
+        let mine = asked
         note = "Searching…"
         do {
-            results = try await Roblox.search(query.trimmingCharacters(in: .whitespaces))
+            let found = try await Roblox.search(query.trimmingCharacters(in: .whitespaces)).items
+            guard mine == asked else { return }
+            results = found
             note = results.isEmpty ? "Nothing found." : ""
         } catch {
+            guard mine == asked else { return }
             note = error.localizedDescription
         }
     }

@@ -42,21 +42,25 @@ public func parseObj(_ text: String) -> Mesh {
     }
 
     func corner(_ token: Substring) -> Int32? {
-        if let known = seen[String(token)] { return known }
         let ids = token.split(separator: "/", omittingEmptySubsequences: false).map { Int($0) }
-        func at(_ list: [Float], _ id: Int?, _ width: Int) -> ArraySlice<Float>? {
+        func start(_ list: [Float], _ id: Int?, _ width: Int) -> Int? {
             guard let id, id != 0 else { return nil }
-            let start = (id > 0 ? id - 1 : list.count / width + id) * width
-            return start >= 0 && start + width <= list.count ? list[start..<start + width] : nil
+            let s = (id > 0 ? id - 1 : list.count / width + id) * width
+            return s >= 0 && s + width <= list.count ? s : nil
         }
-        guard let p = at(v, ids.first ?? nil, 3) else { return nil }
-        let uv = ids.count > 1 ? at(vt, ids[1], 2) : nil
-        let n = ids.count > 2 ? at(vn, ids[2], 3) : nil
+        guard let ps = start(v, ids.first ?? nil, 3) else { return nil }
+        let uvs = ids.count > 1 ? start(vt, ids[1], 2) : nil
+        let ns = ids.count > 2 ? start(vn, ids[2], 3) : nil
+        let key = "\(ps)/\(uvs ?? -1)/\(ns ?? -1)"
+        if let known = seen[key] { return known }
+        let p = v[ps..<ps + 3]
+        let uv = uvs.map { vt[$0..<$0 + 2] }
+        let n = ns.map { vn[$0..<$0 + 3] }
         mesh.positions += p
         mesh.uvs += uv.map { [$0[$0.startIndex], 1 - $0[$0.startIndex + 1]] } ?? [0, 0]
         mesh.normals += n ?? [0, 1, 0]
         let index = Int32(mesh.corners - 1)
-        seen[String(token)] = index
+        seen[key] = index
         return index
     }
 

@@ -2,9 +2,38 @@ import SwiftUI
 import BloxKit
 
 enum Page: Hashable, Identifiable {
-    case profile, fullProfile, favorites, friends, inventory, robux, transactions, notifications, trades
-    case game(Game), item(Item), trade(Int), chat(Int64)
+    case profile, fullProfile, favorites, continuePlaying, friends, inventory, robux, transactions, notifications, trades
+    case search, settings, momentsTab
+    case game(Game), item(Item), trade(Int), chat(Int64), friend(Int64), info(Info)
     var id: String { "\(self)" }
+}
+
+enum Info: String, Hashable {
+    case communities, messages, plus, help, learn, create, accounts
+
+    var title: String {
+        switch self {
+        case .communities: "Communities"
+        case .messages: "Messages"
+        case .plus: "Roblox Plus"
+        case .help: "Help & Safety"
+        case .learn: "Learn"
+        case .create: "Create"
+        case .accounts: "Switch Accounts"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .communities: "three-people"
+        case .messages: "envelope"
+        case .plus: "roblox-plus"
+        case .help: "shield-lock"
+        case .learn: "person-graduate"
+        case .create: "studio"
+        case .accounts: "two-people"
+        }
+    }
 }
 
 extension View {
@@ -114,7 +143,7 @@ struct TransactionsPage: View {
                     Text("Summary").font(.builder(20, .bold))
                     Spacer()
                     Menu {
-                        ForEach(["Past Day", "Past Week", "Past Month", "Past Year"], id: \.self) { p in Button(p) { period = p } }
+                        ForEach(Ledger.periods, id: \.self) { p in Button(p) { period = p } }
                     } label: {
                         HStack(spacing: 6) {
                             Text(period).font(.builder(14.5))
@@ -122,6 +151,7 @@ struct TransactionsPage: View {
                         }
                         .padding(.horizontal, 12).frame(height: 36).background(Color.tile, in: RoundedRectangle(cornerRadius: 8))
                     }
+                    .accessibilityIdentifier("ledgerPeriod")
                 }
                 group("Incoming Robux", Ledger.incoming)
                 row(Ledger.pending, store.profile.ledger[Ledger.pending] ?? 0, faint: true).padding(.top, 8)
@@ -135,9 +165,9 @@ struct TransactionsPage: View {
     private func group(_ title: String, _ rows: [String]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(title).font(.builder(16, .bold)).padding(.top, 28).padding(.bottom, 6)
-            ForEach(rows, id: \.self) { row($0, store.profile.ledger[$0] ?? 0) }
+            ForEach(rows, id: \.self) { row($0, Ledger.amount(store.profile.ledger[$0] ?? 0, in: period)) }
             Divider().overlay(Color.tile).padding(.vertical, 4)
-            row("Total", store.profile.total(rows), bold: true)
+            row("Total", rows.reduce(0) { $0 + Ledger.amount(store.profile.ledger[$1] ?? 0, in: period) }, bold: true)
         }
     }
 
@@ -159,6 +189,8 @@ struct ItemPage: View {
     @EnvironmentObject var store: Store
     let item: Item
     @State private var info: ItemInfo?
+    @State private var sharp: String?
+    @State private var loaded = false
     @State private var confirming = false
     @State private var refusal = ""
 
@@ -166,10 +198,10 @@ struct ItemPage: View {
         let owned = store.profile.owns(item)
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                Thumb(url: item.thumb)
+                Thumb(url: sharp ?? item.thumb)
                 HStack(spacing: 8) {
                     Text(item.name).font(.builder(20, .bold))
-                    if info?.limited == true {
+                    if info?.limited == true || item.limited == true {
                         Text("Limited").font(.builder(12, .bold)).padding(.horizontal, 8).frame(height: 22)
                             .background(Color.online, in: RoundedRectangle(cornerRadius: 4)).foregroundStyle(.black)
                     }
@@ -180,24 +212,24 @@ struct ItemPage: View {
                     if item.showsCreatorCheck { VerifiedBadge(size: 12) }
                 }
                 .padding(.top, 4)
-                PriceLine(price: item.price, size: 20).padding(.top, 14)
-                if owned != nil {
+                PriceLine(price: (owned ?? item).price, size: 20).padding(.top, 14)
+                if let owned {
                     HStack(spacing: 6) {
                         Icon("circle-check", size: 18, filled: true)
                         Text("Item Owned").font(.builder(14.5))
                     }
                     .foregroundStyle(Color.faint).padding(.top, 10).accessibilityIdentifier("itemOwned")
-                    WideButton(title: owned?.wearing == true ? "Take Off" : "Wear", main: owned?.wearing != true) {
-                        store.profile.wear(item, owned?.wearing != true)
-                    }
-                    .accessibilityIdentifier("wearButton")
-                    .padding(.top, 12)
+                    WideButton(title: owned.wearing ? "Take Off" : "Wear", main: !owned.wearing) { store.wear(item, !owned.wearing) }
+                        .accessibilityIdentifier("wearButton")
+                        .padding(.top, 12)
+                } else if item.price == nil {
+                    Text("This item is not currently for sale.").font(.builder(14.5)).foregroundStyle(Color.faint)
+                        .frame(maxWidth: .infinity, minHeight: 48).background(Color.tile, in: RoundedRectangle(cornerRadius: 8))
+                        .padding(.top, 16).accessibilityIdentifier("notForSale")
                 } else {
                     WideButton(title: item.price == 0 ? "Get" : "Buy") {
                         if item.price == 0 { finish(store.profile.buy(item)) } else { confirming = true }
                     }
-                    .disabled(item.price == nil)
-                    .opacity(item.price == nil ? 0.4 : 1)
                     .accessibilityIdentifier("buyButton")
                     .padding(.top, 16)
                 }
@@ -208,11 +240,17 @@ struct ItemPage: View {
                     Text("Description").font(.builder(16, .bold)).padding(.top, 20)
                     Text(d).font(.builder(14.5)).foregroundStyle(Color.faint).padding(.top, 6)
                 }
+                if loaded, info == nil, !item.bundle {
+                    Button { Task { await load() } } label: {
+                        Text("Couldn't load this item's details. Tap to try again.").font(.builder(14.5)).foregroundStyle(Color.faint)
+                    }
+                    .padding(.top, 24).accessibilityIdentifier("itemRetry")
+                }
             }
             .padding(20)
         }
         .page("")
-        .task { info = await Roblox.itemInfo(item) }
+        .task { await load() }
         .alert("Buy Item", isPresented: $confirming) {
             Button("Buy Now") { finish(store.profile.buy(item)) }
             Button("Cancel", role: .cancel) {}
@@ -221,6 +259,15 @@ struct ItemPage: View {
             Text("Would you like to buy \(item.name) for \(grouped(item.price ?? 0)) Robux?" +
                  (after >= 0 ? " Your balance after this transaction will be \(grouped(after)) Robux." : ""))
         }
+    }
+
+    private func load() async {
+        loaded = false
+        async let details = Roblox.itemInfo(item)
+        async let picture = Roblox.bigThumb(item)
+        info = await details
+        sharp = await picture
+        loaded = true
     }
 
     private func finish(_ result: Purchase) {
@@ -249,21 +296,24 @@ struct GamePage: View {
     @EnvironmentObject var store: Store
     let game: Game
     @State private var info: GameInfo?
+    @State private var filled: Game?
+    @State private var loaded = false
     @State private var joining = false
 
     var body: some View {
+        let shown = filled ?? game
         let favourite = store.profile.games.contains { $0.id == game.id }
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 RoundedRectangle(cornerRadius: 8).fill(Color.tile).aspectRatio(16 / 9, contentMode: .fit)
-                    .overlay { RemoteImage(url: game.wide ?? game.icon, fill: true) }
+                    .overlay { RemoteImage(url: shown.wide ?? shown.icon, fill: shown.wide != nil) }
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                 Text(game.name).font(.builder(20, .bold)).padding(.top, 16)
                 if let c = info?.creator, !c.isEmpty {
                     Text("By \(c)").font(.builder(14.5)).foregroundStyle(Color.faint).padding(.top, 4)
                 }
                 HStack(spacing: 0) {
-                    stat("thumb-up", game.rating.map { "\($0)%" } ?? "--", "Rating")
+                    stat("thumb-up", shown.rating.map { "\($0)%" } ?? "--", "Rating")
                     stat("two-people", short(info?.playing ?? game.playing), "Active")
                     stat("circle-play", info.map { short($0.visits) } ?? "--", "Visits")
                 }
@@ -278,7 +328,7 @@ struct GamePage: View {
                 .accessibilityIdentifier("playButton")
                 .padding(.top, 18)
                 WideButton(title: favourite ? "Favorited" : "Favorite", main: false, icon: "star") {
-                    if favourite { store.profile.games.removeAll { $0.id == game.id } } else { store.profile.games.append(game) }
+                    if favourite { store.profile.games.removeAll { $0.id == game.id } } else { store.profile.games.append(shown) }
                 }
                 .accessibilityIdentifier("favoriteButton")
                 .padding(.top, 10)
@@ -295,12 +345,24 @@ struct GamePage: View {
                         fact("Genre", info.genre)
                     }
                     .padding(.top, 16)
+                } else if loaded {
+                    Button { Task { await load() } } label: {
+                        Text("Couldn't load this experience's details. Tap to try again.").font(.builder(14.5)).foregroundStyle(Color.faint)
+                    }
+                    .padding(.top, 28).accessibilityIdentifier("gameRetry")
                 }
             }
             .padding(20)
         }
         .page("")
-        .task { info = await Roblox.gameInfo(game.id) }
+        .task { await load() }
+    }
+
+    private func load() async {
+        loaded = false
+        info = await Roblox.gameInfo(game.id)
+        if game.wide == nil || game.rating == nil { filled = await Roblox.complete([game]).first }
+        loaded = true
     }
 
     private func stat(_ icon: String, _ value: String, _ label: String) -> some View {
@@ -340,14 +402,16 @@ struct NotificationsPage: View {
                         .frame(maxWidth: .infinity).padding(.top, 60)
                 }
                 ForEach(store.profile.notices) { n in
+                    let friend = store.profile.friendList.first { $0.id == n.friend }
                     HStack(alignment: .top, spacing: 12) {
-                        if let f = store.profile.friendList.first(where: { $0.id == n.friend }) {
-                            RemoteCircle(url: f.headshot, size: 48)
+                        if let friend {
+                            RemoteCircle(url: friend.headshot, size: 48)
                         } else {
                             Circle().fill(Color.tile).frame(width: 48, height: 48).overlay(Icon("tilt", size: 24, filled: true))
                         }
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(n.text).font(.builder(14.5))
+                            (Text(friend.map { $0.displayName + " " } ?? "").font(.builder(14.5, .bold)) + Text(n.text).font(.builder(14.5)))
+                                .accessibilityIdentifier("noticeText")
                             Text(n.when).font(.builder(12)).foregroundStyle(Color.faint)
                         }
                         Spacer(minLength: 0)
@@ -360,7 +424,14 @@ struct NotificationsPage: View {
             .padding(.horizontal, 20)
         }
         .page("Notifications")
-        .onAppear { store.profile.notifications = 0 }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                if store.profile.notifications > 0 {
+                    Button("Mark read") { store.profile.notifications = 0 }
+                        .font(.builder(14.5)).accessibilityIdentifier("markRead")
+                }
+            }
+        }
     }
 }
 
@@ -376,8 +447,13 @@ struct ChatList: View {
             ScrollView {
                 VStack(spacing: 0) {
                     if store.profile.friendList.isEmpty {
-                        Text("Add friends in Edit profile and they show up here.").font(.builder(14.5)).foregroundStyle(Color.faint)
+                        Text("Add friends and they show up here.").font(.builder(14.5)).foregroundStyle(Color.faint)
                             .padding(.top, 40)
+                        Button { open(.friends) } label: {
+                            Text("Add Friends").font(.builder(14.5, .bold)).padding(.horizontal, 20).frame(height: 40)
+                                .background(Color.bloxBlue, in: RoundedRectangle(cornerRadius: 8)).foregroundStyle(.white)
+                        }
+                        .padding(.top, 14)
                     }
                     ForEach(store.profile.friendList) { f in
                         Button { open(.chat(f.id)) } label: {
@@ -411,6 +487,7 @@ struct ChatPage: View {
     let friendId: Int64
     @State private var draft = ""
     @State private var asThem = false
+    @FocusState private var typing: Bool
 
     var body: some View {
         let friend = store.profile.friendList.first { $0.id == friendId }
@@ -419,14 +496,16 @@ struct ChatPage: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(spacing: 6) {
-                        ForEach(Array(lines.enumerated()), id: \.offset) { i, line in
+                        ForEach(Array(lines.enumerated()), id: \.element.key) { i, line in
                             HStack(alignment: .bottom, spacing: 8) {
                                 if line.mine { Spacer(minLength: 60) } else { RemoteCircle(url: friend?.headshot, size: 28) }
                                 Text(line.text).font(.builder(14.5)).padding(.horizontal, 12).padding(.vertical, 9)
                                     .background(line.mine ? Color.bloxBlue : Color.tile, in: RoundedRectangle(cornerRadius: 16))
                                     .foregroundStyle(line.mine ? .white : Color.ink)
                                     .contextMenu {
-                                        Button("Delete", role: .destructive) { store.profile.chats["\(friendId)"]?.remove(at: i) }
+                                        Button("Delete", role: .destructive) {
+                                            store.profile.chats["\(friendId)"]?.removeAll { $0 == line }
+                                        }
                                     }
                                 if !line.mine { Spacer(minLength: 60) }
                             }
@@ -436,7 +515,11 @@ struct ChatPage: View {
                     }
                     .padding(16)
                 }
+                .scrollDismissesKeyboard(.interactively)
                 .onChange(of: lines.count) { _, n in withAnimation { proxy.scrollTo(n - 1, anchor: .bottom) } }
+                .onChange(of: typing) { _, on in
+                    if on { withAnimation { proxy.scrollTo(lines.count - 1, anchor: .bottom) } }
+                }
                 .onAppear { proxy.scrollTo(lines.count - 1, anchor: .bottom) }
             }
             HStack(spacing: 10) {
@@ -444,14 +527,15 @@ struct ChatPage: View {
                     Icon(asThem ? "person" : "two-arrows-switch-right", size: 22, filled: asThem)
                         .frame(width: 40, height: 40).background(asThem ? Color.bloxBlue : Color.tile, in: Circle())
                 }
-                .accessibilityIdentifier("sendAsThem")
+                .accessibilityIdentifier("sendAsThem").accessibilityLabel(asThem ? "Sending as them" : "Sending as you")
                 TextField(asThem ? "Their message" : "Say something", text: $draft).font(.builder(14.5))
                     .padding(.horizontal, 14).frame(height: 40).background(Color.tile, in: Capsule())
+                    .focused($typing)
                     .submitLabel(.send).onSubmit(send)
                     .accessibilityIdentifier("chatField")
                 Button(action: send) { Icon("paper-airplane", size: 24, filled: true) }
                     .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
-                    .accessibilityIdentifier("chatSend")
+                    .accessibilityIdentifier("chatSend").accessibilityLabel("Send")
             }
             .padding(.horizontal, 12).padding(.vertical, 8)
         }
@@ -461,7 +545,12 @@ struct ChatPage: View {
     private func send() {
         store.profile.say(draft, to: friendId, mine: !asThem)
         draft = ""
+        typing = true
     }
+}
+
+extension ChatLine {
+    var key: String { id.map { "#\($0)" } ?? "\(mine)|\(text)" }
 }
 
 // MARK: - Trades
@@ -533,31 +622,53 @@ struct TradePage: View {
                             Text(t.status.rawValue.capitalized + (t.when.isEmpty ? "" : " · \(t.when)")).font(.builder(12)).foregroundStyle(Color.faint)
                         }
                     }
-                    side(t.status == .completed ? "Items you gave" : "Items you will give", t.giving, t.giveRobux, t.giveValue)
+                    side(t.status == .completed ? "Items you gave" : "Items you will give", t.giving.map { store.profile.owns($0) ?? $0 }, t.giveRobux, store.profile.giveValue(of: t))
                     side(t.status == .completed ? "Items you received" : "Items you will receive", t.receiving, t.getRobux, t.getValue)
-                    if t.status == .inbound {
+                    switch t.status {
+                    case .inbound:
                         WideButton(title: "Accept") {
-                            if store.profile.accept(trade: id) { note = "Trade accepted." } else { note = "You don't have enough Robux for this trade." }
+                            note = store.profile.accept(trade: id) ? "Trade accepted." : "You don't have enough Robux for this trade."
                         }
                         .accessibilityIdentifier("acceptTrade")
                         .padding(.top, 24)
+                        WideButton(title: "Counter", main: false) { move(to: .outbound, saying: "Counter offer sent.") }
+                            .accessibilityIdentifier("counterTrade").padding(.top, 10)
                         WideButton(title: "Decline", main: false) {
-                            if let i = store.profile.trades.firstIndex(where: { $0.id == id }) { store.profile.trades[i].status = .inactive }
+                            move(to: .inactive, saying: "")
                             dismiss()
                         }
-                        .padding(.top, 10)
+                        .accessibilityIdentifier("declineTrade").padding(.top, 10)
+                    case .outbound:
+                        WideButton(title: "Cancel Trade", main: false) {
+                            move(to: .inactive, saying: "")
+                            dismiss()
+                        }
+                        .accessibilityIdentifier("cancelTrade").padding(.top, 24)
+                    case .completed, .inactive:
+                        EmptyView()
                     }
                     if !note.isEmpty { Text(note).font(.builder(14.5)).foregroundStyle(Color.faint).padding(.top, 12).accessibilityIdentifier("tradeNote") }
                 }
                 .padding(20)
+            } else {
+                Text("This trade no longer exists.").font(.builder(14.5)).foregroundStyle(Color.faint)
+                    .frame(maxWidth: .infinity).padding(.top, 60).accessibilityIdentifier("tradeGone")
             }
         }
         .page("Trade")
     }
 
+    private func move(to status: TradeStatus, saying words: String) {
+        if let i = store.profile.trades.firstIndex(where: { $0.id == id }) { store.profile.trades[i].status = status }
+        note = words
+    }
+
     private func side(_ title: String, _ items: [Item], _ robux: Int, _ value: Int) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title).font(.builder(16, .bold)).padding(.top, 24)
+            if items.isEmpty && robux == 0 {
+                Text("Nothing").font(.builder(14.5)).foregroundStyle(Color.faint)
+            }
             LazyVGrid(columns: grid, spacing: 16) { ForEach(items) { ItemCard(item: $0) } }
             if robux > 0 {
                 HStack {

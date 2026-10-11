@@ -31,20 +31,49 @@ public enum Parse {
         struct L: Decodable { let CollectibleLowestResalePrice: Int? }
         struct R: Decodable { let AssetId: Int64; let Name: String; let PriceInRobux: Int?; let Creator: C?; let IsLimited: Bool?; let IsLimitedUnique: Bool?; let CollectiblesItemDetails: L? }
         guard let r = try? JSONDecoder().decode(R.self, from: data) else { return nil }
-        let resale = (r.IsLimited ?? false) || (r.IsLimitedUnique ?? false) ? r.CollectiblesItemDetails?.CollectibleLowestResalePrice : nil
-        return Item(id: r.AssetId, name: r.Name, creator: r.Creator?.Name ?? "Roblox", price: resale ?? r.PriceInRobux)
+        let limited = (r.IsLimited ?? false) || (r.IsLimitedUnique ?? false)
+        let resale = limited ? r.CollectiblesItemDetails?.CollectibleLowestResalePrice : nil
+        return Item(id: r.AssetId, name: r.Name, creator: r.Creator?.Name ?? "Roblox", price: resale ?? r.PriceInRobux,
+                    limited: limited ? true : nil)
     }
 
     public static func catalog(_ data: Data) -> [Item] {
         struct R: Decodable {
-            struct I: Decodable { let id: Int64; let itemType: String; let name: String; let creatorName: String?; let price: Int?; let lowestPrice: Int?; let creatorHasVerifiedBadge: Bool? }
+            struct I: Decodable {
+                let id: Int64; let itemType: String; let name: String; let creatorName: String?; let price: Int?
+                let lowestPrice: Int?; let lowestResalePrice: Int?; let unitsAvailableForConsumption: Int?
+                let itemRestrictions: [String]?; let creatorHasVerifiedBadge: Bool?
+            }
             let data: [I]
         }
         guard let r = try? JSONDecoder().decode(R.self, from: data) else { return [] }
-        return r.data.map {
-            Item(id: $0.id, bundle: $0.itemType == "Bundle", name: $0.name, creator: $0.creatorName ?? "Roblox",
-                 price: $0.price ?? $0.lowestPrice, creatorVerified: $0.creatorHasVerifiedBadge)
+        return r.data.map { i in
+            let collectible = !Set(i.itemRestrictions ?? []).isDisjoint(with: ["Collectible", "Limited", "LimitedUnique"])
+            let soldOut = collectible && (i.unitsAvailableForConsumption ?? 0) == 0 && (i.lowestResalePrice ?? 0) > 0
+            return Item(id: i.id, bundle: i.itemType == "Bundle", name: i.name, creator: i.creatorName ?? "Roblox",
+                        price: soldOut ? i.lowestResalePrice : (i.price ?? i.lowestPrice),
+                        creatorVerified: i.creatorHasVerifiedBadge, limited: collectible ? true : nil)
         }
+    }
+
+    public static func catalogCursor(_ data: Data) -> String? {
+        struct R: Decodable { let nextPageCursor: String? }
+        let c = (try? JSONDecoder().decode(R.self, from: data))?.nextPageCursor
+        return c?.isEmpty == false ? c : nil
+    }
+
+    public static func votes(_ data: Data) -> [Int64: Int] {
+        struct R: Decodable { struct V: Decodable { let id: Int64; let upVotes: Int?; let downVotes: Int? }; let data: [V] }
+        guard let r = try? JSONDecoder().decode(R.self, from: data) else { return [:] }
+        var out: [Int64: Int] = [:]
+        for v in r.data { out[v.id] = rating(up: v.upVotes ?? 0, down: v.downVotes ?? 0) }
+        return out
+    }
+
+    public static func playing(_ data: Data) -> [Int64: Int] {
+        struct R: Decodable { struct G: Decodable { let id: Int64; let playing: Int? }; let data: [G] }
+        guard let r = try? JSONDecoder().decode(R.self, from: data) else { return [:] }
+        return Dictionary(r.data.map { ($0.id, $0.playing ?? 0) }, uniquingKeysWith: { a, _ in a })
     }
 
     public static func games(_ data: Data) -> [Game] {

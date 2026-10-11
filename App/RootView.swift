@@ -8,6 +8,7 @@ struct RootView: View {
     @State private var tab = MainTab.home
     @State private var menu = false
     @State private var path: [Page] = []        // pages pushed over the tabs
+    @State private var settings = false
     @State private var profileOpen = false
     @State private var profileFull = false      // dragged up to fill the screen
     @State private var profileAtTop = true
@@ -21,16 +22,20 @@ struct RootView: View {
                 .toolbar(.hidden, for: .navigationBar)
                 .navigationDestination(for: Page.self, destination: destination)
         }
+        .sheet(isPresented: $settings) { EditProfileView() }
+        .task { await store.refreshSaved() }
     }
 
     @ViewBuilder
     private func destination(_ p: Page) -> some View {
         switch p {
-        case .profile: EmptyView()
-        case .fullProfile: FullProfileView(open: { open($0) }) { path.removeAll(); tab = .me }
+        case .profile, .settings, .momentsTab: EmptyView()
+        case .fullProfile: FullProfileView(open: { open($0) }) { path.removeAll(); profileOpen = false; tab = .me }
         case .inventory: InventoryPage(open: { open($0) })
-        case .favorites: FavoritesView(open: { open($0) })
-        case .friends: FriendsListView()
+        case .favorites: GamesPage(title: "Favorites", games: store.profile.games, empty: "No favorites yet. Open a game and tap Favorite.", open: { open($0) })
+        case .continuePlaying: GamesPage(title: "Continue Playing", games: store.profile.games, empty: "Games you favorite show up here.", open: { open($0) })
+        case .friends: FriendsListView(open: { open($0) })
+        case .friend(let id): FriendPage(id: id, open: { open($0) })
         case .robux: RobuxPage(open: { open($0) })
         case .transactions: TransactionsPage()
         case .notifications: NotificationsPage()
@@ -39,6 +44,8 @@ struct RootView: View {
         case .game(let game): GamePage(game: game)
         case .item(let item): ItemPage(item: item)
         case .chat(let friend): ChatPage(friendId: friend)
+        case .search: SearchPage(open: { open($0) })
+        case .info(let kind): InfoPage(kind: kind)
         }
     }
 
@@ -49,7 +56,7 @@ struct RootView: View {
                     kept(.home) { HomeView(openMenu: openMenu, open: { open($0) }) }
                     kept(.moments) { MomentsView() }
                     kept(.chat) { ChatList(open: { open($0) }) }
-                    kept(.me) { AppearanceView(openMenu: openMenu, open: { open($0) }) }
+                    kept(.me) { AppearanceView(active: tab == .me, openMenu: openMenu, open: { open($0) }) }
                 }
                 .frame(maxHeight: .infinity)
                 bar
@@ -57,17 +64,20 @@ struct RootView: View {
             if profileOpen {
                 Color.black.opacity(0.55).ignoresSafeArea().onTapGesture(perform: closeProfile)
                     .transition(.identity)
+                    .accessibilityLabel("Close profile")
                 profileSheet.transition(.move(edge: .bottom)).zIndex(1)
             }
             if menu {
                 Color.black.opacity(0.55).ignoresSafeArea().onTapGesture(perform: closeMenu)
                     .transition(.opacity)
                     .accessibilityIdentifier("menuShade")
+                    .accessibilityLabel("Close menu")
                 MenuView { p in
                     closeMenu()
                     open(p)
                 }
                 .offset(x: min(menuPull, 0))
+                .animation(.spring(response: 0.3, dampingFraction: 0.9), value: menuPull == 0)   // a short drag springs back
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 12)
                         .updating($menuPull) { g, pull, _ in
@@ -78,6 +88,7 @@ struct RootView: View {
                         }
                 )
                 .transition(.move(edge: .leading))
+                .zIndex(2)
             }
         }
         .background(Color.bg)
@@ -85,12 +96,17 @@ struct RootView: View {
 
     private func open(_ p: Page?) {
         guard let p else { return }
-        if p == .profile {
+        switch p {
+        case .profile:
             profileFull = false
             profileAtTop = true
             withAnimation(Self.sheetRise) { profileOpen = true }
-        } else {
-            if profileOpen { profileOpen = false }
+        case .settings:
+            settings = true
+        case .momentsTab:
+            profileOpen = false
+            tab = .moments
+        default:
             path.append(p)
         }
     }
@@ -158,6 +174,7 @@ struct RootView: View {
                     .contentShape(Rectangle())
                 }
                 .accessibilityIdentifier("tab-\(t.rawValue)")
+                .accessibilityLabel(t.rawValue)
             }
         }
         .padding(.horizontal, 5.5).padding(.top, 10).padding(.bottom, 0.5)
@@ -179,11 +196,13 @@ struct RootView: View {
 
 struct HomeView: View {
     @EnvironmentObject var store: Store
+    @Environment(\.scenePhase) private var phase
     let openMenu: () -> Void
     let open: (Page) -> Void
     @State private var charts = false
     @State private var rows: [(title: String, games: [Game])] = []
     @State private var failure: String?
+    @State private var loading = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -192,10 +211,13 @@ struct HomeView: View {
             ScrollView {
                 if charts { chartsList } else { forYou }
             }
-            .refreshable { await load() }
+            .refreshable { await load(tries: 1) }
         }
         .background(Color.bg)
         .task { if rows.isEmpty { await load() } }
+        .onChange(of: phase) { _, now in
+            if now == .active, rows.isEmpty, !loading { Task { await load() } }
+        }
     }
 
     private var topBar: some View {
@@ -204,17 +226,19 @@ struct HomeView: View {
                 Icon("three-bars-horizontal", size: 25)
                     .overlay(alignment: .topTrailing) { Circle().fill(Color.bloxBlue).frame(width: 8, height: 8).offset(x: 1, y: 1) }
             }
-            .accessibilityIdentifier("menuButton")
+            .accessibilityIdentifier("menuButton").accessibilityLabel("Menu")
             Wordmark(size: 19.2).padding(.leading, 11)
             Spacer()
-            Icon("magnifying-glass", size: 25).frame(width: 26)
+            Button { open(.search) } label: { Icon("magnifying-glass", size: 25).frame(width: 26) }
+                .accessibilityIdentifier("homeSearch").accessibilityLabel("Search")
             Button { open(.robux) } label: { Icon("robux", size: 26).frame(width: 26) }
-                .accessibilityIdentifier("homeRobux").padding(.leading, 18.5)
+                .accessibilityIdentifier("homeRobux").accessibilityLabel("Robux").padding(.leading, 18.5)
             Button { open(.notifications) } label: {
                 Icon("bell", size: 24).frame(width: 26)
-                    .overlay(alignment: .topTrailing) { CountBubble(n: store.profile.notifications, size: 17).offset(x: 3, y: -4.5) }
+                    .overlay(alignment: .topLeading) { CountBubble(n: store.profile.notifications, size: 17).fixedSize().offset(x: 11.5, y: -4.5) }
             }
-            .accessibilityIdentifier("homeBell").padding(.leading, 18.5)
+            .accessibilityIdentifier("homeBell").accessibilityLabel("Notifications, \(store.profile.notifications) new")
+            .padding(.leading, 18.5)
         }
         .foregroundStyle(Color.ink)
         .frame(height: 28)
@@ -242,7 +266,7 @@ struct HomeView: View {
             Button { open(.profile) } label: {
                 HStack(spacing: 12) {
                     Headshot(image: store.avatar, crop: store.profile.crop, size: 36)
-                    Text(store.profile.displayName).font(.builder(20, .bold))
+                    Text(store.profile.shownName).font(.builder(20, .bold)).lineLimit(1)
                 }
             }
             .accessibilityIdentifier("homeName")
@@ -256,12 +280,21 @@ struct HomeView: View {
                     }
                 }
             }
-            if let failure { Text(failure).foregroundStyle(Color.faint).padding(.top, 12) }
+            status
             if !continueGames.isEmpty {
-                section("Continue", chevron: true) { row(continueGames) }
+                section("Continue", page: .continuePlaying) { row(continueGames) }
             }
         }
         .padding(.horizontal, 20).padding(.bottom, 24)
+    }
+
+    @ViewBuilder
+    private var status: some View {
+        if rows.isEmpty, loading {
+            ProgressView().tint(Color.faint).frame(maxWidth: .infinity).padding(.top, 20)
+        } else if let failure {
+            Text(failure).font(.builder(14.5)).foregroundStyle(Color.faint).padding(.top, 12).accessibilityIdentifier("homeFailure")
+        }
     }
 
     private var friends: some View {
@@ -278,20 +311,24 @@ struct HomeView: View {
                     .foregroundStyle(Color.faint)
                     .frame(width: 113)
                 }
+                .accessibilityIdentifier("homeAddFriends")
                 ForEach(store.profile.friendList) { f in
-                    VStack(spacing: 0) {
-                        RemoteCircle(url: f.headshot, size: 113)
-                            .overlay(alignment: .bottomTrailing) {
-                                if f.online {
-                                    Circle().fill(Color.bg).frame(width: 23, height: 23)
-                                        .overlay(Circle().fill(Color.online).frame(width: 17, height: 17)).offset(x: -2.5, y: -2.5)
+                    Button { open(.friend(f.id)) } label: {
+                        VStack(spacing: 0) {
+                            RemoteCircle(url: f.headshot, size: 113)
+                                .overlay(alignment: .bottomTrailing) {
+                                    if f.online {
+                                        Circle().fill(Color.bg).frame(width: 23, height: 23)
+                                            .overlay(Circle().fill(Color.online).frame(width: 17, height: 17)).offset(x: -2.5, y: -2.5)
+                                    }
                                 }
-                            }
-                        Text(f.displayName).font(.builder(12, .bold)).lineLimit(1).frame(height: 15).padding(.top, 8.5)
-                        Text(f.status.isEmpty ? " " : f.status).font(.builder(12)).lineLimit(1).frame(height: 15)
+                            Text(f.displayName).font(.builder(12, .bold)).lineLimit(1).frame(height: 15).padding(.top, 8.5)
+                            Text(f.status.isEmpty ? " " : f.status).font(.builder(12)).lineLimit(1).frame(height: 15)
+                        }
+                        .foregroundStyle(Color.faint)
+                        .frame(width: 113)
                     }
-                    .foregroundStyle(Color.faint)
-                    .frame(width: 113)
+                    .buttonStyle(PressStyle())
                     .accessibilityIdentifier("homeFriend")
                 }
             }
@@ -304,7 +341,7 @@ struct HomeView: View {
             ForEach(rows.indices, id: \.self) { i in
                 section(rows[i].title) { row(rows[i].games) }
             }
-            if let failure { Text(failure).foregroundStyle(Color.faint).padding(.top, 20) }
+            status
         }
         .padding(.horizontal, 20).padding(.bottom, 24)
     }
@@ -320,13 +357,17 @@ struct HomeView: View {
         .padding(.horizontal, -20).contentMargins(.horizontal, 20)
     }
 
-    private func section<C: View>(_ title: String, chevron: Bool = false, @ViewBuilder _ content: () -> C) -> some View {
+    private func section<C: View>(_ title: String, page: Page? = nil, @ViewBuilder _ content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 8) {
-                Text(title).font(.builder(20, .bold))
-                if chevron { Icon("chevron-large-right", size: 20) }
+            Button { if let page { open(page) } } label: {
+                HStack(spacing: 8) {
+                    Text(title).font(.builder(20, .bold))
+                    if page != nil { Icon("chevron-large-right", size: 20) }
+                }
+                .frame(height: 24)
             }
-            .frame(height: 24)
+            .buttonStyle(PressStyle())
+            .allowsHitTesting(page != nil)
             content()
         }
         .padding(.top, 27)
@@ -339,13 +380,23 @@ struct HomeView: View {
         store.profile.games.isEmpty ? Array(rows.first { $0.title == "Top Revisited" }?.games.prefix(8) ?? []) : store.profile.games
     }
 
-    private func load() async {
-        failure = nil
-        do {
-            rows = try await Roblox.home()
-            if rows.isEmpty { failure = "Roblox sent nothing to show." }
-        } catch {
-            failure = error.localizedDescription
+    private func load(tries: Int = 4) async {
+        guard !loading else { return }
+        loading = true
+        defer { loading = false }
+        for (attempt, pause) in [0, 2, 5, 10].prefix(tries).enumerated() {
+            if attempt > 0 { try? await Task.sleep(for: .seconds(pause)) }
+            do {
+                let got = try await Roblox.home()
+                if !got.isEmpty {
+                    rows = got
+                    failure = nil
+                    return
+                }
+                failure = "Roblox sent nothing to show."
+            } catch {
+                failure = error.localizedDescription
+            }
         }
     }
 }
@@ -363,8 +414,8 @@ struct MenuView: View {
                     HStack(spacing: 18) {
                         Headshot(image: store.avatar, crop: store.profile.crop, size: 64)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(store.profile.displayName).font(.builder(17, .bold))
-                            Text("@\(store.profile.username)").font(.builder(16)).foregroundStyle(Color(white: 0.85))
+                            Text(store.profile.shownName).font(.builder(17, .bold)).lineLimit(1)
+                            Text("@\(store.profile.shownUsername)").font(.builder(16)).foregroundStyle(Color(white: 0.85)).lineLimit(1)
                         }
                     }
                 }
@@ -373,24 +424,28 @@ struct MenuView: View {
                 robuxCard.padding(.top, 14)
                 VStack(alignment: .leading, spacing: 0) {
                     row("bookmark", "Favorites", page: .favorites)
-                    row("clock-spin-reverse", "Continue Playing")
+                    row("clock-spin-reverse", "Continue Playing", page: .continuePlaying)
                     row("two-people", "Friends", count: store.profile.friendsBadge, page: .friends)
-                    row("three-people", "Communities")
+                    row("three-people", "Communities", page: .info(.communities))
                     row("backpack", "Inventory", page: .inventory)
                     row("hand-two-arrows-horizontal", "Trades", page: .trades)
-                    row("envelope", "Messages", count: store.profile.messages)
-                    row("roblox-plus", "Roblox Plus")
-                    row("gear", "Settings")
-                    row("shield-lock", "Help & Safety")
+                    row("envelope", "Messages", count: store.profile.messages, page: .info(.messages))
+                    row("roblox-plus", "Roblox Plus", page: .info(.plus))
+                    row("gear", "Settings", page: .settings)
+                    row("shield-lock", "Help & Safety", page: .info(.help))
                     Divider().overlay(Color(white: 0.25)).padding(.vertical, 8)
-                    row("moments", "Moments")
-                    row("person-graduate", "Learn")
-                    row("studio", "Create")
+                    row("moments", "Moments", page: .momentsTab)
+                    row("person-graduate", "Learn", page: .info(.learn))
+                    row("studio", "Create", page: .info(.create))
                 }
                 .padding(.top, 14)
-                Text("Switch Accounts").font(.builder(17)).frame(maxWidth: .infinity, minHeight: 50)
-                    .background(Color.field, in: RoundedRectangle(cornerRadius: 10))
-                    .padding(.top, 14).padding(.bottom, 20)
+                Button { open(.info(.accounts)) } label: {
+                    Text("Switch Accounts").font(.builder(17)).frame(maxWidth: .infinity, minHeight: 50)
+                        .background(Color.field, in: RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(PressStyle())
+                .accessibilityIdentifier("menu-Switch Accounts")
+                .padding(.top, 14).padding(.bottom, 20)
             }
             .padding(.horizontal, 18)
         }
@@ -413,17 +468,20 @@ struct MenuView: View {
             }
             .accessibilityIdentifier("menuBuyRobux")
             Divider().overlay(Color(white: 0.25))
-            HStack(spacing: 18) {
-                Icon("roblox-plus", size: 22)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("More fun for less Robux.")
-                    Text("Subscribe to Roblox Plus.")
+            Button { open(.info(.plus)) } label: {
+                HStack(spacing: 18) {
+                    Icon("roblox-plus", size: 22)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("More fun for less Robux.")
+                        Text("Subscribe to Roblox Plus.")
+                    }
+                    .font(.builder(13))
+                    Spacer()
+                    Icon("chevron-large-right", size: 20)
                 }
-                .font(.builder(13))
-                Spacer()
-                Icon("chevron-large-right", size: 20)
+                .padding(.horizontal, 14).frame(height: 64).contentShape(Rectangle())
             }
-            .padding(.horizontal, 14).frame(height: 64)
+            .accessibilityIdentifier("menuPlus")
         }
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(white: 0.25), lineWidth: 1))
     }
@@ -451,29 +509,31 @@ struct MomentsView: View {
         VStack(spacing: 14) {
             Icon("moments", size: 60)
             Text("Moments").font(.builder(22, .bold))
-            Text("Short clips from experiences show up here.").foregroundStyle(Color.faint)
+            Text("Short clips from experiences show up here.").font(.builder(14.5)).foregroundStyle(Color.faint)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.bg)
     }
 }
 
-struct FavoritesView: View {
-    @EnvironmentObject var store: Store
+struct GamesPage: View {
+    let title: String
+    let games: [Game]
+    let empty: String
     let open: (Page) -> Void
     var body: some View {
         ScrollView {
-            if store.profile.games.isEmpty {
-                Text("No favorites yet. Open a game and tap Favorite.").font(.builder(14.5)).foregroundStyle(Color.faint).padding(.top, 40)
+            if games.isEmpty {
+                Text(empty).font(.builder(14.5)).foregroundStyle(Color.faint).padding(.top, 40)
             }
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .top), GridItem(.flexible(), alignment: .top)], spacing: 17) {
-                ForEach(store.profile.games) { g in
+                ForEach(games) { g in
                     Button { open(.game(g)) } label: { WideGameCard(game: g) }.buttonStyle(PressStyle())
                 }
             }
             .padding(20)
         }
-        .page("Favorites")
+        .page(title)
     }
 }
 
@@ -500,26 +560,203 @@ struct InventoryPage: View {
 
 struct FriendsListView: View {
     @EnvironmentObject var store: Store
+    let open: (Page) -> Void
+    @State private var name = ""
+    @State private var adding = false
+    @State private var note = ""
+
     var body: some View {
+        let listed = store.profile.friendList.count, more = store.profile.friends - listed
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                Text("Friends (\(grouped(store.profile.friends)))").font(.builder(20, .bold)).padding(.vertical, 12)
-                ForEach(store.profile.friendList) { f in
-                    HStack(spacing: 12) {
-                        RemoteCircle(url: f.headshot, size: 48)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(f.displayName).font(.builder(16, .bold))
-                            Text("@\(f.name)").font(.builder(14.5)).foregroundStyle(Color.faint)
-                        }
-                        Spacer()
-                        if f.online { Circle().fill(Color.online).frame(width: 12, height: 12) }
+                HStack(spacing: 10) {
+                    TextField("Add a friend by Roblox username", text: $name).font(.builder(14.5))
+                        .textInputAutocapitalization(.never).autocorrectionDisabled().submitLabel(.go).onSubmit(add)
+                        .padding(.horizontal, 12).frame(height: 40).background(Color.tile, in: RoundedRectangle(cornerRadius: 8))
+                        .accessibilityIdentifier("friendsAddField")
+                    Button(action: add) {
+                        Group { if adding { ProgressView().tint(.white) } else { Text("Add").font(.builder(14.5, .bold)) } }
+                            .frame(width: 64, height: 40).background(Color.bloxBlue, in: RoundedRectangle(cornerRadius: 8)).foregroundStyle(.white)
                     }
-                    .frame(height: 68)
+                    .disabled(adding || name.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .accessibilityIdentifier("friendsAddButton")
+                }
+                .padding(.top, 12)
+                if !note.isEmpty { Text(note).font(.builder(12)).foregroundStyle(Color.faint).padding(.top, 8).accessibilityIdentifier("friendsAddNote") }
+                Text("Friends (\(grouped(max(store.profile.friends, listed))))").font(.builder(20, .bold)).padding(.top, 20).padding(.bottom, 8)
+                ForEach(store.profile.friendList) { f in
+                    Button { open(.friend(f.id)) } label: {
+                        HStack(spacing: 12) {
+                            RemoteCircle(url: f.headshot, size: 48)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(f.displayName).font(.builder(16, .bold))
+                                Text("@\(f.name)").font(.builder(14.5)).foregroundStyle(Color.faint)
+                            }
+                            Spacer()
+                            if f.online { Circle().fill(Color.online).frame(width: 12, height: 12) }
+                        }
+                        .frame(height: 68).contentShape(Rectangle())
+                    }
+                    .buttonStyle(PressStyle())
+                    .accessibilityIdentifier("friendRowPage")
                     Divider().overlay(Color.tile)
+                }
+                if more > 0 {
+                    Text("and \(grouped(more)) more").font(.builder(14.5)).foregroundStyle(Color.faint).padding(.vertical, 16)
                 }
             }
             .padding(.horizontal, 20)
         }
         .page("Friends")
+    }
+
+    private func add() {
+        let who = name.trimmingCharacters(in: .whitespaces)
+        guard !who.isEmpty, !adding else { return }
+        adding = true
+        note = ""
+        Task {
+            do {
+                note = try await store.addFriend(who) ? "Added \(who)." : "\(who) is already in your friends."
+                name = ""
+            } catch {
+                note = error.localizedDescription
+            }
+            adding = false
+        }
+    }
+}
+
+struct FriendPage: View {
+    @EnvironmentObject var store: Store
+    @Environment(\.dismiss) private var dismiss
+    let id: Int64
+    let open: (Page) -> Void
+
+    var body: some View {
+        ScrollView {
+            if let f = store.profile.friendList.first(where: { $0.id == id }) {
+                VStack(spacing: 0) {
+                    RemoteCircle(url: f.headshot, size: 140)
+                        .overlay(alignment: .bottomTrailing) {
+                            if f.online { Circle().fill(Color.bg).frame(width: 30, height: 30).overlay(Circle().fill(Color.online).frame(width: 22, height: 22)) }
+                        }
+                        .padding(.top, 24)
+                    Text(f.displayName).font(.builder(26, .bold)).padding(.top, 16)
+                    Text("@\(f.name)").font(.builder(14.5)).foregroundStyle(Color.faint).padding(.top, 2)
+                    Text(f.status.isEmpty ? (f.online ? "Online" : "Offline") : f.status).font(.builder(14.5)).foregroundStyle(Color.faint).padding(.top, 10)
+                    WideButton(title: "Chat", icon: "speech-bubble-align-center") { open(.chat(f.id)) }
+                        .accessibilityIdentifier("friendChat").padding(.top, 24)
+                    WideButton(title: "Unfriend", main: false) {
+                        store.profile.removeFriend(f.id)
+                        dismiss()
+                    }
+                    .accessibilityIdentifier("friendRemove").padding(.top, 10)
+                }
+                .padding(.horizontal, 20)
+            } else {
+                Text("This friend was removed.").font(.builder(14.5)).foregroundStyle(Color.faint).padding(.top, 60)
+            }
+        }
+        .page("")
+    }
+}
+
+struct SearchPage: View {
+    let open: (Page) -> Void
+    @State private var query = ""
+    @State private var results: [Game] = []
+    @State private var note = "Search for an experience by name."
+    @State private var asked = 0
+    @FocusState private var typing: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Icon("magnifying-glass", size: 18).foregroundStyle(Color.faint)
+                TextField("Search", text: $query).font(.builder(16)).submitLabel(.search).autocorrectionDisabled()
+                    .focused($typing).onSubmit { Task { await search() } }
+                    .accessibilityIdentifier("searchField")
+            }
+            .padding(.horizontal, 12).frame(height: 40).background(Color.tile, in: RoundedRectangle(cornerRadius: 8))
+            .padding(.horizontal, 20).padding(.vertical, 10)
+            ScrollView {
+                if !note.isEmpty { Text(note).font(.builder(14.5)).foregroundStyle(Color.faint).padding(.top, 30) }
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .top), GridItem(.flexible(), alignment: .top)], spacing: 17) {
+                    ForEach(results) { g in
+                        Button { open(.game(g)) } label: { WideGameCard(game: g) }
+                            .buttonStyle(PressStyle()).accessibilityIdentifier("searchResult")
+                    }
+                }
+                .padding(.horizontal, 20)
+            }
+        }
+        .page("Search")
+        .onAppear { typing = true }
+    }
+
+    private func search() async {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return }
+        asked += 1
+        let mine = asked
+        note = "Searching…"
+        do {
+            let found = try await Roblox.games(q)
+            guard mine == asked else { return }
+            results = found
+            note = found.isEmpty ? "No experiences found for \u{201C}\(q)\u{201D}." : ""
+        } catch {
+            guard mine == asked else { return }
+            note = error.localizedDescription
+        }
+    }
+}
+
+struct InfoPage: View {
+    @EnvironmentObject var store: Store
+    let kind: Info
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 14) {
+                Icon(kind.icon, size: 56).padding(.top, 50)
+                Text(kind.title).font(.builder(22, .bold))
+                Text(text).font(.builder(14.5)).foregroundStyle(Color.faint).multilineTextAlignment(.center)
+                if kind == .plus {
+                    let on = store.profile.badge == .plus
+                    WideButton(title: on ? "Cancel Roblox Plus" : "Subscribe", main: !on) { store.profile.badge = on ? .none : .plus }
+                        .accessibilityIdentifier("plusSubscribe").padding(.top, 10)
+                    Text(on ? "The Plus mark is on your profile." : "Subscribing here is free and only adds the Plus mark to your profile.")
+                        .font(.builder(12)).foregroundStyle(Color.faint).multilineTextAlignment(.center)
+                }
+                if kind == .accounts {
+                    HStack(spacing: 12) {
+                        Headshot(image: store.avatar, crop: store.profile.crop, size: 44)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(store.profile.shownName).font(.builder(16, .bold))
+                            Text("@\(store.profile.shownUsername)").font(.builder(14.5)).foregroundStyle(Color.faint)
+                        }
+                        Spacer()
+                        Icon("circle-check", size: 22, filled: true).foregroundStyle(Color.bloxBlue)
+                    }
+                    .padding(12).background(Color.tile, in: RoundedRectangle(cornerRadius: 8)).padding(.top, 10)
+                }
+            }
+            .padding(.horizontal, 28)
+        }
+        .page(kind.title)
+    }
+
+    private var text: String {
+        switch kind {
+        case .communities: "You haven't joined any communities."
+        case .messages: store.profile.messages > 0 ? "You have \(grouped(store.profile.messages)) unread messages." : "Your inbox is empty."
+        case .plus: "More fun for less Robux: a monthly Robux stipend, discounts in the Marketplace, and trading."
+        case .help: "Help and safety settings live on the Roblox website."
+        case .learn: "Guides for building on Roblox live on the Creator Hub."
+        case .create: "Experiences are made in Roblox Studio on a computer."
+        case .accounts: "This phone is signed in to one account."
+        }
     }
 }

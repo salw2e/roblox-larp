@@ -110,11 +110,35 @@ final class BloxUITests: XCTestCase {
         XCTAssertTrue(app.buttons["fullEditAvatar"].waitForExistence(timeout: 5))
         sleep(2)
         shot("09 full profile")
+        app.buttons["toggle3D"].tap()
+        XCTAssertTrue(app.images["avatarImage"].waitForExistence(timeout: 3))
+        app.buttons["toggle3D"].tap()
         back()
+        XCTAssertTrue(app.buttons["closeProfile"].waitForExistence(timeout: 5), "the profile is still there after going back")
+        app.buttons["profileCode"].tap()           // the QR button shows a code
+        XCTAssertTrue(any("profileCodeImage").waitForExistence(timeout: 3))
+        shot("09b profile code")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12)).tap()
+        XCTAssertTrue(any("profileCodeImage").waitForNonExistence(timeout: 5))
+        app.buttons["closeProfile"].tap()
 
         XCTAssertTrue(any("homeFriend").waitForExistence(timeout: 5))
         sleep(2)
         shot("10 home")
+
+        any("homeFriend").tap()
+        XCTAssertTrue(app.buttons["friendChat"].waitForExistence(timeout: 5))
+        shot("10a friend")
+        back()
+        app.buttons["homeSearch"].tap()
+        let find = app.textFields["searchField"]
+        XCTAssertTrue(find.waitForExistence(timeout: 5))
+        find.tap()
+        find.typeText("adopt me\n")
+        XCTAssertTrue(app.buttons["searchResult"].firstMatch.waitForExistence(timeout: 40), "Home's search finds real games")
+        sleep(2)
+        shot("10a2 search")
+        back()
 
         app.buttons["homeRobux"].tap()
         XCTAssertTrue(app.staticTexts["robuxBalance"].waitForExistence(timeout: 5))
@@ -139,6 +163,9 @@ final class BloxUITests: XCTestCase {
         app.buttons["homeBell"].tap()
         XCTAssertTrue(any("noticeRow").waitForExistence(timeout: 5))
         shot("10e notifications")
+        XCTAssertTrue(app.buttons["markRead"].exists, "opening the list alone does not clear the bell")
+        app.buttons["markRead"].tap()
+        XCTAssertFalse(app.buttons["markRead"].exists)
         back()
 
         app.buttons["home-Charts"].tap()
@@ -193,9 +220,37 @@ final class BloxUITests: XCTestCase {
         sleep(1)
         shot("15 item")
         back()
+
+        app.buttons["cat-Clothing"].tap()
+        XCTAssertTrue(first.waitForExistence(timeout: 40))
+        sleep(3)
+        shot("15b clothing")
+        app.buttons["searchToggle"].tap()
+        let catalog = app.textFields["catalogSearch"]
+        XCTAssertTrue(catalog.waitForExistence(timeout: 5))
+        catalog.tap()
+        catalog.typeText("horns\n")
+        sleep(6)
+        XCTAssertTrue(first.waitForExistence(timeout: 40))
+        first.tap()
+        XCTAssertTrue(app.buttons["buyButton"].waitForExistence(timeout: 5))
+        app.buttons["buyButton"].tap()
+        if app.alerts.buttons["Buy Now"].waitForExistence(timeout: 3) { app.alerts.buttons["Buy Now"].tap() }
+        XCTAssertTrue(any("itemOwned").waitForExistence(timeout: 5), "55,888 Robux buys the first result")
+        shot("15c bought")
+        back()
+        app.buttons["searchToggle"].tap()          // closing the search ends it
+
         app.buttons["tab-Customize"].tap()
         XCTAssertTrue(app.buttons["inventoryItem"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["undoWear"].isEnabled)
+        app.buttons["inventoryItem"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["undoWear"].isEnabled)
+        app.buttons["undoWear"].tap()
+        XCTAssertTrue(app.buttons["redoWear"].isEnabled)
+        app.buttons["redoWear"].tap()
         shot("16 customize")
+        if ProcessInfo.processInfo.environment["BLOX_TEST_REDRAW"] == "1" { try redraw() }
 
         app.buttons["tab-Chat"].tap()
         XCTAssertTrue(app.buttons["chatRow"].firstMatch.waitForExistence(timeout: 5))
@@ -213,13 +268,38 @@ final class BloxUITests: XCTestCase {
         shot("18 conversation")
         back()
 
+        app.buttons["tab-Home"].tap()
+        app.buttons["menuButton"].tap()
+        XCTAssertTrue(app.staticTexts["menuRobux"].waitForExistence(timeout: 5))
+        let balance = app.staticTexts["menuRobux"].label
+        let left = Int(balance.replacingOccurrences(of: ",", with: "")) ?? -1
+        XCTAssertTrue(left >= 0 && left < 55888, "paying for the item took Robux: \(balance)")
+        shot("19 menu after buying")
         app.terminate()
         app.launchArguments = []
         app.launch()
         XCTAssertTrue(app.buttons["menuButton"].waitForExistence(timeout: 10))
         app.buttons["menuButton"].tap()
         XCTAssertTrue(app.staticTexts["menuRobux"].waitForExistence(timeout: 5))
-        XCTAssertEqual(app.staticTexts["menuRobux"].label, "55,888")
+        XCTAssertEqual(app.staticTexts["menuRobux"].label, balance)
+    }
+
+    private func redraw() throws {
+        let update = app.buttons["updateAvatar"]
+        XCTAssertTrue(update.waitForExistence(timeout: 5), "worn items changed, so the button is offered")
+        update.tap()
+        let note = app.staticTexts["drawNote"]
+        var done = false
+        for _ in 0..<60 where !done {
+            sleep(2)
+            done = note.exists || !update.exists
+        }
+        XCTAssertTrue(done, "Update avatar finished")
+        shot("16b update avatar")
+        if note.exists {
+            XCTAssertTrue(note.label.contains("hour") || note.label.contains("minute"), "a rationing note, not a failure: \(note.label)")
+        }
+        if !update.exists { XCTAssertTrue(any("avatar3D").exists) }
     }
 
     private func back() { app.navigationBars.buttons.element(boundBy: 0).tap() }
