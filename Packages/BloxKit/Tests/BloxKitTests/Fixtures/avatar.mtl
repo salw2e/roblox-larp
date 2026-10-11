@@ -1,0 +1,32 @@
+
+newmtl Player6Mtl
+Ka 1 1 1
+Kd 1 1 1
+Ks 0 0 0
+d 1
+Ns 0
+map_Kd tex0.png
+
+newmtl Player1Mtl
+Ka 1 1 1
+Kd 1 1 1
+Ks 0 0 0
+d 1
+Ns 0
+map_Kd tex0.png
+
+newmtl Player5Mtl
+Ka 1 1 1
+Kd 1 1 1
+Ks 0 0 0
+d 1
+Ns 0
+map_Kd tex0.png
+
+newmtl Handle1Mtl
+Ka 1 1 1
+Kd 1 1 1
+Ks 0 0 0
+d 1
+Ns 0
+map_Kd tex0.png

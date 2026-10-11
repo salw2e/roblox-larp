@@ -23,20 +23,49 @@ enum ModelFiles {
 }
 
 enum AvatarScene {
-    static func make() -> (scene: SCNScene, turntable: SCNNode, eye: SCNNode)? {
-        guard ModelFiles.exists, let loaded = try? SCNScene(url: ModelFiles.obj, options: nil) else { return nil }
-        let model = SCNNode()
-        for child in loaded.rootNode.childNodes { model.addChildNode(child) }
-        let (lo, hi) = model.boundingBox
-        guard hi.y > lo.y else { return nil }
-        model.position = SCNVector3(-(lo.x + hi.x) / 2, -(lo.y + hi.y) / 2, -(lo.z + hi.z) / 2)
-        model.enumerateHierarchy { node, _ in
-            for m in node.geometry?.materials ?? [] {
-                m.lightingModel = .lambert
-                m.isDoubleSided = true
+    static func build() -> (node: SCNNode, min: [Float], max: [Float])? {
+        guard let obj = try? String(contentsOf: ModelFiles.obj, encoding: .utf8) else { return nil }
+        let mesh = parseObj(obj)
+        guard mesh.corners > 0, !mesh.parts.isEmpty else { return nil }
+        let mtl = (try? String(contentsOf: ModelFiles.dir.appendingPathComponent("a.mtl"), encoding: .utf8)).map(parseMtl) ?? [:]
+
+        func source(_ values: [Float], _ semantic: SCNGeometrySource.Semantic, _ width: Int) -> SCNGeometrySource {
+            let data = values.withUnsafeBufferPointer { Data(buffer: $0) }
+            return SCNGeometrySource(data: data, semantic: semantic, vectorCount: values.count / width, usesFloatComponents: true,
+                                     componentsPerVector: width, bytesPerComponent: MemoryLayout<Float>.size, dataOffset: 0,
+                                     dataStride: MemoryLayout<Float>.size * width)
+        }
+        let elements = mesh.parts.map { part in
+            SCNGeometryElement(data: part.indices.withUnsafeBufferPointer { Data(buffer: $0) }, primitiveType: .triangles,
+                               primitiveCount: part.indices.count / 3, bytesPerIndex: MemoryLayout<Int32>.size)
+        }
+        let geometry = SCNGeometry(sources: [source(mesh.positions, .vertex, 3), source(mesh.normals, .normal, 3),
+                                             source(mesh.uvs, .texcoord, 2)], elements: elements)
+        var pictures: [String: UIImage] = [:]
+        geometry.materials = mesh.parts.map { part in
+            let m = SCNMaterial()
+            m.lightingModel = .lambert
+            m.isDoubleSided = true
+            let info = mtl[part.material]
+            if let file = info?.texture {
+                if pictures[file] == nil { pictures[file] = UIImage(contentsOfFile: ModelFiles.dir.appendingPathComponent(file).path) }
+                m.diffuse.contents = pictures[file]
                 m.diffuse.mipFilter = .linear
             }
+            if m.diffuse.contents == nil, let c = info?.colour {
+                m.diffuse.contents = UIColor(red: CGFloat(c[0]), green: CGFloat(c[1]), blue: CGFloat(c[2]), alpha: 1)
+            }
+            return m
         }
+        let b = mesh.bounds
+        return (SCNNode(geometry: geometry), b.min, b.max)
+    }
+
+    static func make() -> (scene: SCNScene, turntable: SCNNode, eye: SCNNode)? {
+        guard let built = build() else { return nil }
+        let model = built.node, lo = built.min, hi = built.max
+        guard hi[1] > lo[1] else { return nil }
+        model.position = SCNVector3(-(lo[0] + hi[0]) / 2, -(lo[1] + hi[1]) / 2, -(lo[2] + hi[2]) / 2)
         let turntable = SCNNode()
         turntable.addChildNode(model)
 
@@ -44,7 +73,7 @@ enum AvatarScene {
         scene.background.contents = UIColor.clear
         scene.rootNode.addChildNode(turntable)
 
-        let height = hi.y - lo.y, width = max(hi.x - lo.x, hi.z - lo.z)
+        let height = hi[1] - lo[1], width = max(hi[0] - lo[0], hi[2] - lo[2])
         let camera = SCNCamera()
         camera.fieldOfView = 30
         camera.zNear = 0.1
@@ -58,12 +87,12 @@ enum AvatarScene {
         let ambient = SCNNode()
         ambient.light = SCNLight()
         ambient.light?.type = .ambient
-        ambient.light?.intensity = 750
+        ambient.light?.intensity = 700
         scene.rootNode.addChildNode(ambient)
         let key = SCNNode()
         key.light = SCNLight()
         key.light?.type = .directional
-        key.light?.intensity = 450
+        key.light?.intensity = 350
         key.eulerAngles = SCNVector3(-0.5, Float.pi + 0.5, 0)
         scene.rootNode.addChildNode(key)
         return (scene, turntable, eye)
