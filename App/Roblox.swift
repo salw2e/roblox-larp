@@ -3,8 +3,10 @@ import BloxKit
 
 enum BloxError: LocalizedError {
     case offline, noUser, noPicture
+    case said(String)       // the avatar service's own words
     var errorDescription: String? {
         switch self {
+        case .said(let words): words
         case .offline: "Roblox didn't answer. Check the internet and try again."
         case .noUser: "No Roblox user with that name."
         case .noPicture: "Roblox has no avatar picture for that user yet."
@@ -23,6 +25,19 @@ enum Roblox {
         guard let reply = try? await URLSession.shared.data(for: r),
               (reply.1 as? HTTPURLResponse)?.statusCode == 200 else { throw BloxError.offline }
         return reply.0
+    }
+
+    static let service = Bundle.main.object(forInfoDictionaryKey: "BloxAPI") as? String ?? ""
+
+    static func look(_ body: Data) async throws -> Look {
+        guard let url = URL(string: service + "/look") else { throw BloxError.offline }
+        var r = URLRequest(url: url, timeoutInterval: 90)
+        r.httpMethod = "POST"
+        r.httpBody = body
+        r.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        guard let reply = try? await URLSession.shared.data(for: r) else { throw BloxError.offline }
+        if let look = Parse.look(reply.0) { return look }
+        throw Parse.lookError(reply.0).map(BloxError.said) ?? BloxError.offline
     }
 
     static func url(_ base: String, _ query: [String: String]) -> URL {

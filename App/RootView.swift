@@ -99,6 +99,7 @@ struct RootView: View {
             }
             .clipShape(UnevenRoundedRectangle(topLeadingRadius: 16, topTrailingRadius: 16))
             .padding(.top, max(rest + profilePull, 0))
+            .ignoresSafeArea()
             .simultaneousGesture(
                 DragGesture(minimumDistance: 8)
                     .updating($profilePull) { g, pull, _ in
@@ -121,7 +122,6 @@ struct RootView: View {
             )
             .animation(Self.sheetSettle, value: profilePull == 0)
         }
-        .ignoresSafeArea()
         .environmentObject(store)
     }
 
@@ -139,7 +139,7 @@ struct RootView: View {
         HStack(spacing: 0) {
             ForEach(MainTab.allCases, id: \.self) { t in
                 Button { tab = t } label: {
-                    VStack(spacing: 4.5) {
+                    VStack(spacing: 5) {
                         icon(t).frame(height: 24)
                         Text(t.rawValue).font(.builder(10.5, .medium)).frame(height: 13)
                     }
@@ -150,7 +150,7 @@ struct RootView: View {
                 .accessibilityIdentifier("tab-\(t.rawValue)")
             }
         }
-        .padding(.horizontal, 5.5).padding(.top, 9).padding(.bottom, 1.5)
+        .padding(.horizontal, 5.5).padding(.top, 10).padding(.bottom, 0.5)
         .background(Color.bg)
     }
 
@@ -215,7 +215,7 @@ struct HomeView: View {
             Icon("magnifying-glass", size: 25).frame(width: 26)
             Icon("robux", size: 26).frame(width: 26).padding(.leading, 18.5)
             Icon("bell", size: 24).frame(width: 26).padding(.leading, 18.5)
-                .overlay(alignment: .topTrailing) { CountBubble(n: store.profile.notifications, size: 17).offset(x: 3, y: -6) }
+                .overlay(alignment: .topTrailing) { CountBubble(n: store.profile.notifications, size: 17).offset(x: 3, y: -4.5) }
         }
         .foregroundStyle(Color.ink)
         .frame(height: 28)
@@ -229,7 +229,7 @@ struct HomeView: View {
                 Button { charts = t == "Charts" } label: {
                     VStack(spacing: 14) {
                         Text(t).font(.builder(14.5)).frame(height: 18).foregroundStyle(Color.faint)
-                        Rectangle().fill(on ? Color.ink : Color.tile).frame(height: 1.5)
+                        Rectangle().fill(on ? Color.ink : Color.tile).frame(height: 1)
                     }
                 }
                 .accessibilityIdentifier("home-\(t)")
@@ -327,7 +327,7 @@ struct HomeView: View {
     }
 
     private var recommended: [Game] {
-        Array((rows.first { $0.title == "Top Playing Now" } ?? rows.first)?.games.prefix(6) ?? [])
+        Array((rows.first { $0.title == "Top Playing Now" } ?? rows.first)?.games.prefix(4) ?? [])
     }
     private var continueGames: [Game] {
         store.profile.games.isEmpty ? Array(rows.first { $0.title == "Top Revisited" }?.games.prefix(8) ?? []) : store.profile.games

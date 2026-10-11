@@ -5,7 +5,7 @@ final class BloxUITests: XCTestCase {
 
     override func setUp() {
         continueAfterFailure = false
-        app.launchArguments = ["-uitest"]
+        app.launchArguments = ["-uitest", "-photograph-avatar"]
     }
 
     func testEveryScreen() throws {
@@ -73,7 +73,7 @@ final class BloxUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["friendsChip"].label, "1 Friends")
         XCTAssertEqual(app.staticTexts["displayName"].label, "salw2e")
         XCTAssertEqual(app.staticTexts["username"].label, "@salw2e")
-        XCTAssertTrue(app.images["avatarImage"].exists)
+        XCTAssertTrue(any("avatar3D").exists, "the profile shows the 3D avatar")
         XCTAssertTrue(any("wornItem").exists)
         sleep(2)
         shot("07 profile")                         // the half sheet over Home

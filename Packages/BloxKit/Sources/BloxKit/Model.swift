@@ -73,6 +73,10 @@ public struct Profile: Codable, Hashable, Sendable {
     public var notifications = 0     // the bell
     public var messages = 0          // Messages in the menu
     public var friendsBadge = 0      // Friends in the menu
+    public var definition: String?
+    public var drawn: String?
+
+    public var needsRedraw: Bool { wearSignature(items) != (drawn ?? "") }
 
     public init() {}
 

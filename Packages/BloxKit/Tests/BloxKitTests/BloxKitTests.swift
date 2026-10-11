@@ -140,4 +140,51 @@ final class ParseTests: XCTestCase {
         XCTAssertNil(w[1])                                                // "Blocked": no picture
         XCTAssertNotNil(Parse.images(try fixture("headshot"))[156])
     }
+
+    func testLook() throws {
+        let look = try XCTUnwrap(Parse.look(try fixture("look")))        // a real reply from Blox/server
+        XCTAssertTrue(look.obj.hasSuffix("/a.obj"))
+        XCTAssertTrue(look.mtl.hasSuffix("/a.mtl"))
+        XCTAssertEqual(look.textures.count, 1)
+        XCTAssertEqual(look.image?.hasPrefix("https://tr.rbxcdn.com/"), true)
+        XCTAssertTrue(look.definition.contains("\"headColor\":\"#FDEA8D\""))
+        XCTAssertNil(look.drawingsLeft)
+        XCTAssertNil(Parse.look(try fixture("look-error")))
+        XCTAssertEqual(Parse.lookError(try fixture("look-error")), "No Roblox user with that name.")
+        XCTAssertNil(Parse.lookError(try fixture("look")))
+        let rationed = #"{"definition":{},"image":null,"model":{"obj":"o","mtl":"m","textures":[]},"budget":{"left":5,"resetIn":900}}"#
+        XCTAssertEqual(Parse.look(Data(rationed.utf8))?.drawingsLeft, 2)
+        XCTAssertEqual(Parse.look(Data(rationed.utf8))?.resetIn, 900)
+        XCTAssertNil(Parse.look(Data(rationed.utf8))?.image)
+        XCTAssertEqual(Parse.look(Data(rationed.replacingOccurrences(of: "5", with: "1").utf8))?.drawingsLeft, 0)
+    }
+
+    func testLookRequests() throws {
+        func json(_ d: Data) throws -> [String: Any] { try XCTUnwrap(JSONSerialization.jsonObject(with: d) as? [String: Any]) }
+        XCTAssertEqual(try json(lookRequest(user: "builderman"))["user"] as? String, "builderman")
+        let look = try XCTUnwrap(Parse.look(try fixture("look")))
+        let items = [Item(id: 5, name: "Hat", price: 0, wearing: true), Item(id: 7, bundle: true, name: "Pack", price: 0, wearing: true)]
+        let q = try json(lookRequest(definition: look.definition, wear: items))
+        let colours = try XCTUnwrap((q["base"] as? [String: Any])?["bodyColors"] as? [String: String])
+        XCTAssertEqual(colours["torsoColor"], "#FFAF00")
+        let wear = try XCTUnwrap(q["wear"] as? [[String: Any]])
+        XCTAssertEqual(wear.map { $0["id"] as? Int }, [5, 7])
+        XCTAssertEqual(wear.map { $0["bundle"] as? Bool }, [false, true])
+        XCTAssertTrue(try json(lookRequest(definition: nil, wear: []))["base"] is NSNull)
+    }
+
+    func testRedrawNeeded() {
+        var p = Profile()
+        XCTAssertFalse(p.needsRedraw)                                      // nothing worn, nothing drawn
+        p.wear(Item(id: 9, name: "A", price: 0))
+        p.wear(Item(id: 3, bundle: true, name: "B", price: 0))
+        XCTAssertTrue(p.needsRedraw)
+        XCTAssertEqual(wearSignature(p.items), "9,b3")
+        p.drawn = wearSignature(p.items)
+        XCTAssertFalse(p.needsRedraw)
+        p.items.reverse()                                                  // order doesn't matter
+        XCTAssertFalse(p.needsRedraw)
+        p.wear(p.items[0], false)                                          // taking one off does
+        XCTAssertTrue(p.needsRedraw)
+    }
 }

@@ -1,0 +1,294 @@
+#!/usr/bin/env python3
+import gzip, hashlib, http.server, json, os, re, shutil, sys, time, urllib.error, urllib.parse, urllib.request
+
+COOKIE = open(os.environ.get("ROBLOX_COOKIE_FILE", "cookie.txt")).read().strip()
+CACHE = os.environ.get("BLOX_CACHE", "cache")
+PUBLIC = os.environ.get("BLOX_PUBLIC", "")
+UA = "Mozilla/5.0"
+csrf = ""
+budget = {"left": None, "reset_at": 0.0}
+
+def note_budget(headers):
+    left, reset = headers.get("x-ratelimit-remaining"), headers.get("x-ratelimit-reset")
+    if left is not None and reset is not None:
+        budget["left"], budget["reset_at"] = int(left), time.time() + int(reset)
+
+def budget_now():
+    if budget["left"] is not None and time.time() >= budget["reset_at"]:
+        budget["left"] = None
+    return {"left": budget["left"], "resetIn": max(0, int(budget["reset_at"] - time.time())) if budget["left"] is not None else 0}
+
+SINGLE = {2, 11, 12, 17, 18, 27, 28, 29, 30, 31, 79}
+LAYERED = set(range(64, 73))
+DEFAULT_BODY = {
+    "bodyColors": {k: "#A3A2A5" for k in ("headColor", "leftArmColor", "leftLegColor", "rightArmColor", "rightLegColor", "torsoColor")},
+    "scales": {"depth": 1, "head": 1, "height": 1, "proportion": 0, "width": 1, "bodyType": 0},
+    "playerAvatarType": {"playerAvatarType": "R15"},
+}
+
+class Refused(Exception):
+    pass
+
+class Busy(Refused):
+    pass
+
+def rbx(url, body=None, login=True):
+    global csrf
+    for attempt in range(2):
+        headers = {"User-Agent": UA, "Accept": "application/json"}
+        if login:
+            headers["Cookie"] = ".ROBLOSECURITY=" + COOKIE
+        data = None
+        if body is not None:
+            data = json.dumps(body).encode()
+            headers["Content-Type"] = "application/json"
+            headers["x-csrf-token"] = csrf
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, data=data, headers=headers), timeout=25) as r:
+                if "/avatar/render" in url:
+                    note_budget(r.headers)
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            if "/avatar/render" in url:
+                note_budget(e.headers)
+            token = e.headers.get("x-csrf-token")
+            if e.code == 403 and token and attempt == 0:
+                csrf = token
+                continue
+            if e.code == 401:
+                raise Refused("The Roblox login on the server has expired. Sal needs to send a new cookie.")
+            if e.code == 429:
+                wait = max(1, round(budget_now()["resetIn"] / 60)) if "/avatar/render" in url else 1
+                raise Busy(f"Roblox only draws a few new outfits an hour. Try again in about {wait} min.")
+            detail = e.read().decode("utf-8", "replace")[:300]
+            try:
+                detail = json.loads(detail)["errors"][0]["message"] or detail
+            except Exception:
+                pass
+            raise Refused(f"Roblox refused ({e.code}): {detail}")
+        except (urllib.error.URLError, TimeoutError):
+            raise Refused("Roblox didn't answer. Try again.")
+
+def cdn(h):
+    i = 31
+    for c in h[:38]:
+        i ^= ord(c)
+    return f"https://t{i % 8}.rbxcdn.com/{h}"
+
+def download(url):
+    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept-Encoding": "gzip"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        b = r.read()
+    return gzip.decompress(b) if b[:2] == b"\x1f\x8b" else b
+
+def plain_mtl(mtl, names):
+    out = []
+    for block in re.split(r"(?m)^(?=newmtl )", mtl):
+        lines = [l for l in block.splitlines() if l.strip() and not l.startswith(("map_d", "map_Ka", "Material"))]
+        textured = any(l.startswith("map_Kd") for l in lines)
+        for l in lines:
+            if l.startswith("map_Kd"):
+                l = "map_Kd " + names.get(l.split()[-1], l.split()[-1])
+            elif textured and l.startswith(("Kd ", "Ka ")):
+                l = l[:2] + " 1 1 1"
+            elif l.startswith("Ks "):
+                l = "Ks 0 0 0"
+            out.append(l)
+        out.append("")
+    return "\n".join(out)
+
+def store_model(description_url):
+    d = json.loads(download(description_url))
+    key = hashlib.sha1(d["obj"].encode()).hexdigest()[:20]
+    folder = os.path.join(CACHE, key)
+    names = {h: f"tex{i}.png" for i, h in enumerate(d.get("textures", []))}
+    if not os.path.exists(os.path.join(folder, "done")):
+        tmp = folder + ".part"
+        shutil.rmtree(tmp, ignore_errors=True)
+        os.makedirs(tmp)
+        obj = download(cdn(d["obj"])).decode("utf-8", "replace")
+        obj = re.sub(r"(?m)^mtllib .*$", "mtllib a.mtl", obj)
+        if "mtllib" not in obj:
+            obj = "mtllib a.mtl\n" + obj
+        open(os.path.join(tmp, "a.obj"), "w").write(obj)
+        open(os.path.join(tmp, "a.mtl"), "w").write(plain_mtl(download(cdn(d["mtl"])).decode("utf-8", "replace"), names))
+        for h, name in names.items():
+            open(os.path.join(tmp, name), "wb").write(download(cdn(h)))
+        open(os.path.join(tmp, "done"), "w").close()
+        shutil.rmtree(folder, ignore_errors=True)
+        os.rename(tmp, folder)
+        sweep()
+    base = f"{PUBLIC}/file/{key}"
+    return {"obj": f"{base}/a.obj", "mtl": f"{base}/a.mtl", "textures": [f"{base}/{n}" for n in names.values()],
+            "camera": d.get("camera"), "aabb": d.get("aabb")}
+
+def sweep():
+    for name in os.listdir(CACHE):
+        path = os.path.join(CACHE, name)
+        if time.time() - os.path.getmtime(path) > 2 * 86400:
+            shutil.rmtree(path, ignore_errors=True)
+
+def wait_for(fetch):
+    for _ in range(24):
+        try:
+            r = fetch()
+        except Busy:
+            time.sleep(4)
+            continue
+        r = r["data"][0] if "data" in r else r
+        if r.get("state") == "Completed" and r.get("imageUrl"):
+            return r["imageUrl"]
+        if r.get("state") not in ("Pending", None):
+            raise Refused(f"Roblox could not draw that avatar ({r.get('state')}).")
+        time.sleep(2)
+    raise Refused("Roblox took too long to draw the avatar. Try again.")
+
+def look_of_user(username):
+    found = rbx("https://users.roblox.com/v1/usernames/users", {"usernames": [username], "excludeBannedUsers": True}, login=False)
+    if not found.get("data"):
+        raise Refused("No Roblox user with that name.")
+    uid = found["data"][0]["id"]
+    a = rbx(f"https://avatar.roblox.com/v2/avatar/users/{uid}/avatar")
+    colours = a.get("bodyColor3s", {})
+    definition = {
+        "assets": [{k: v for k, v in x.items() if k in ("id", "meta")} for x in a.get("assets", [])],
+        "bodyColors": {k[:-1]: "#" + v for k, v in colours.items()},     # headColor3 -> headColor
+        "scales": a.get("scales", DEFAULT_BODY["scales"]),
+        "playerAvatarType": {"playerAvatarType": a.get("playerAvatarType", "R15")},
+    }
+    model = store_model(wait_for(lambda: rbx(f"https://thumbnails.roblox.com/v1/users/avatar-3d?userId={uid}")))
+    image = wait_for(lambda: rbx(f"https://thumbnails.roblox.com/v1/users/avatar?userIds={uid}&size=720x720&format=Png", login=False))
+    return {"definition": definition, "image": image, "model": model}
+
+def asset_ids(wear):
+    ids = []
+    for w in wear:
+        if w.get("bundle"):
+            d = rbx(f"https://catalog.roblox.com/v1/bundles/{int(w['id'])}/details", login=False)
+            ids += [i["id"] for i in d.get("items", []) if i.get("type") == "Asset"]
+        else:
+            ids.append(int(w["id"]))
+    return ids
+
+def one_per_slot(picks):
+    last = {kind: aid for aid, kind in picks if kind in SINGLE}
+    return [aid for aid, kind in picks if kind not in SINGLE or last[kind] == aid]
+
+def outfit(base, wear):
+    base = base or {}
+    known = {a["id"]: a for a in base.get("assets", [])}
+    picks = []
+    for aid in dict.fromkeys(asset_ids(wear)):
+        picks.append((aid, rbx(f"https://economy.roblox.com/v2/assets/{aid}/details", login=False).get("AssetTypeId")))
+    kinds = dict(picks)
+    assets = []
+    for n, aid in enumerate(one_per_slot(picks)):
+        entry = {"id": aid}
+        if "meta" in known.get(aid, {}):
+            entry["meta"] = known[aid]["meta"]
+        elif kinds[aid] in LAYERED:
+            entry["meta"] = {"order": 5 + n, "version": 1}
+        assets.append(entry)
+    return {
+        "assets": assets,
+        "bodyColors": base.get("bodyColors", DEFAULT_BODY["bodyColors"]),
+        "scales": base.get("scales", DEFAULT_BODY["scales"]),
+        "playerAvatarType": base.get("playerAvatarType", DEFAULT_BODY["playerAvatarType"]),
+    }
+
+def look_of_outfit(base, wear):
+    if budget_now()["left"] is not None and budget_now()["left"] < 2:
+        raise Busy(f"Roblox only draws a few new outfits an hour. Try again in about {max(1, round(budget_now()['resetIn'] / 60))} min.")
+    definition = outfit(base, wear)
+    body = {"thumbnailConfig": {"thumbnailId": 1, "thumbnailType": "3d", "size": "420x420"}, "avatarDefinition": definition}
+    for pause in (0, 6, 8):
+        time.sleep(pause)
+        r = rbx("https://avatar.roblox.com/v1/avatar/render", body)
+        if r.get("state") == "Completed" and r.get("imageUrl"):
+            return {"definition": definition, "image": None, "model": store_model(r["imageUrl"])}
+        if r.get("state") != "Pending":
+            raise Refused(f"Roblox could not draw that outfit ({r.get('state')}).")
+    raise Refused("Roblox took too long to draw the outfit. Try again.")
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    def reply(self, code, body, kind="application/json"):
+        if isinstance(body, (dict, list)):
+            body = json.dumps(body).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", kind)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        if self.path == "/budget":
+            return self.reply(200, budget_now())
+        m = re.fullmatch(r"/file/([0-9a-f]{20})/(a\.obj|a\.mtl|tex\d{1,2}\.png)", self.path)
+        path = m and os.path.join(CACHE, m.group(1), m.group(2))
+        if not path or not os.path.isfile(path):
+            return self.reply(404, {"error": "not found"})
+        self.reply(200, open(path, "rb").read(), "image/png" if path.endswith(".png") else "text/plain")
+
+    def do_POST(self):
+        if self.path != "/look":
+            return self.reply(404, {"error": "not found"})
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+            if not 0 < n <= 200_000:
+                raise Refused("Bad request.")
+            q = json.loads(self.rfile.read(n))
+            if q.get("user"):
+                out = look_of_user(str(q["user"])[:40])
+            else:
+                wear = q.get("wear") or []
+                if not isinstance(wear, list) or len(wear) > 60:
+                    raise Refused("Too many items.")
+                out = look_of_outfit(q.get("base"), wear)
+            self.reply(200, {**out, "budget": budget_now()})
+        except Refused as e:
+            self.reply(422, {"error": str(e), "budget": budget_now()})
+        except Exception as e:
+            sys.stderr.write(f"look failed: {e!r}\n")
+            self.reply(500, {"error": "The avatar service hit a problem. Try again."})
+
+    def log_message(self, *a):
+        pass
+
+def demo():
+    assert cdn("1DAY-aed8e568ed6d47ef5a75c41782ffdfda").startswith("https://t")
+    m = plain_mtl("newmtl A\nKa 0.5 0.5 0.5\nKd 0.5 0.5 0.5\nKs 0.1 0.1 0.1\nmap_Ka H1\nmap_Kd H1\nmap_d H1\n\nnewmtl B\nKd 0.2 0.3 0.4\n", {"H1": "tex0.png"})
+    assert "map_Kd tex0.png" in m and "map_d" not in m and "map_Ka" not in m
+    assert "Kd 1 1 1" in m.split("newmtl B")[0] and "Kd 0.2 0.3 0.4" in m.split("newmtl B")[1]     # plain colours survive
+    user = look_of_user("builderman")
+    assert user["definition"]["bodyColors"]["headColor"].startswith("#") and user["model"]["obj"].endswith("/a.obj")
+    assert user["image"].startswith("https://")
+    assert one_per_slot([(1, 8), (2, 11), (3, 8), (4, 11), (5, 12)]) == [1, 3, 4, 5]
+    d = outfit(user["definition"], [{"id": 1028606}, {"id": 144076760}, {"id": 144076760}])
+    assert [a["id"] for a in d["assets"]] == [1028606, 144076760] and d["bodyColors"] == user["definition"]["bodyColors"]
+    worn = look_of_outfit(user["definition"], [{"id": 215718515}, {"id": 1028606}]) if os.environ.get("DEMO_RENDER") else user
+    key = worn["model"]["obj"].split("/")[-2]
+    obj = open(os.path.join(CACHE, key, "a.obj")).read()
+    assert obj.count("\nv ") > 500 and "mtllib a.mtl" in obj
+    assert "map_Kd tex0.png" in open(os.path.join(CACHE, key, "a.mtl")).read()
+    assert all(os.path.isfile(os.path.join(CACHE, key, t.split("/")[-1])) for t in worn["model"]["textures"])
+    assert worn["model"]["camera"]["fov"] > 0
+    note_budget({"x-ratelimit-remaining": "0", "x-ratelimit-reset": "900"})
+    assert budget_now() == {"left": 0, "resetIn": 900} or budget_now()["resetIn"] == 899
+    try:
+        look_of_outfit(None, [])
+        raise AssertionError("an empty budget must refuse before asking Roblox")
+    except Busy as e:
+        assert "15 min" in str(e), str(e)
+    try:
+        look_of_user("nosuchuser_zz_9q_x")
+        raise AssertionError("an unknown user must be refused")
+    except Refused:
+        pass
+    print("ok", key)
+
+if __name__ == "__main__":
+    os.makedirs(CACHE, exist_ok=True)
+    if sys.argv[1:] == ["demo"]:
+        demo()
+    else:
+        http.server.ThreadingHTTPServer(("127.0.0.1", 8766), Handler).serve_forever()

@@ -209,8 +209,8 @@ struct WideGameCard: View {
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             Text(game.name).font(.builder(14.5, .bold)).lineLimit(1).frame(height: 18).padding(.top, 12)
-            HStack(spacing: 4) {
-                Icon("thumb-up", size: 16, filled: true)
+            HStack(spacing: 3) {
+                Icon("thumb-up", size: 15, filled: true)
                 Text(game.rating.map { "\($0)% Rating" } ?? "\(short(game.playing)) Playing")
             }
             .font(.builder(14.5)).foregroundStyle(Color.faint).frame(height: 18).padding(.top, 3)

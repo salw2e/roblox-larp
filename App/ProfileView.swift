@@ -13,7 +13,7 @@ struct ProfileView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                AvatarPicture(image: store.avatar).frame(height: 236).frame(maxWidth: .infinity).padding(.top, 44)
+                AvatarStage().frame(height: 236).frame(maxWidth: .infinity).padding(.top, 44)
                 header.padding(.top, 6)
                 chips.padding(.top, 16)
                 if !store.profile.bio.isEmpty {
@@ -73,7 +73,7 @@ struct ProfileView: View {
         HStack(alignment: .top, spacing: 12) {
             Headshot(image: store.avatar, crop: store.profile.crop, size: 88)
             VStack(alignment: .leading, spacing: 3) {
-                NameLine(profile: store.profile, font: 20).frame(height: 24)
+                NameLine(profile: store.profile, font: 20).frame(height: 24).foregroundStyle(Color.faint)
                 Text("@\(store.profile.username)").font(.builder(14.5)).foregroundStyle(Color.faint).lineLimit(1)
                     .frame(height: 18)
                     .accessibilityIdentifier("username")

@@ -48,8 +48,9 @@ struct AppearanceView: View {
         ZStack(alignment: .top) {
             LinearGradient(colors: [Color(white: 0.2), Color(white: 0.3)], startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea(edges: .top)
-            AvatarPicture(image: store.avatar).padding(.top, 50).padding(.bottom, 22)
+            AvatarStage().padding(.top, 50).padding(.bottom, 22)
             topControls
+            if store.profile.needsRedraw || store.drawing || !store.drawNote.isEmpty { redrawControl }
             HStack(spacing: 22) {
                 Icon("arrow-curl-to-left", size: 20)
                 Icon("arrow-curl-to-right", size: 20)
@@ -61,6 +62,29 @@ struct AppearanceView: View {
         }
         .foregroundStyle(Color.ink)
         .frame(height: 332)
+    }
+
+    private var redrawControl: some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            if store.profile.needsRedraw || store.drawing {
+                Button { Task { await store.redraw() } } label: {
+                    HStack(spacing: 8) {
+                        if store.drawing { ProgressView().tint(Color.ink) } else { Icon("arrow-spin-clockwise", size: 18) }
+                        Text(store.drawing ? "Drawing…" : "Update avatar").font(.builder(14.5, .medium))
+                    }
+                    .padding(.horizontal, 14).frame(height: 44).background(Color.pill, in: Capsule())
+                }
+                .disabled(store.drawing)
+                .accessibilityIdentifier("updateAvatar")
+            }
+            if !store.drawNote.isEmpty {
+                Text(store.drawNote).font(.builder(12)).multilineTextAlignment(.trailing).frame(maxWidth: 200, alignment: .trailing)
+                    .padding(.horizontal, 10).padding(.vertical, 6).background(Color.pill.opacity(0.85), in: RoundedRectangle(cornerRadius: 10))
+                    .accessibilityIdentifier("drawNote")
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+        .padding(.trailing, 20).padding(.bottom, 33)
     }
 
     private var topControls: some View {
@@ -92,7 +116,7 @@ struct AppearanceView: View {
                 Spacer()
                 HStack(spacing: 6) {
                     Icon("robux", size: 17)
-                    Text(short(store.profile.robux)).font(.builder(15, .medium))
+                    Text(short(store.profile.robux)).font(.builder(14.5))
                 }
                 .padding(.horizontal, 16).frame(height: 44).background(Color.pill, in: Capsule())
                 .accessibilityElement(children: .combine)

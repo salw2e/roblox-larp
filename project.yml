@@ -33,6 +33,7 @@ targets:
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         CADisableMinimumFrameDurationOnPhone: true
         ITSAppUsesNonExemptEncryption: false
+        BloxAPI: https://justsal.xyz/blox-api/dk0F-UdHxSyKj2023ve7ZB-d
   BloxUITests:
     type: bundle.ui-testing
     platform: iOS
