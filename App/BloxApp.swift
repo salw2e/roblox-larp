@@ -14,6 +14,7 @@ struct BloxApp: App {
             RootView()
                 .environmentObject(store)
                 .environment(\.font, .builder(17))
+                .foregroundStyle(Color.ink)
                 .preferredColorScheme(.dark)
                 .tint(.white)
         }

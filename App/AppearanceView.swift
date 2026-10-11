@@ -19,7 +19,7 @@ struct AppearanceView: View {
     @State private var priceText = ""
     @State private var raised = false
     @GestureState private var pull: CGFloat = 0
-    private let restTop: CGFloat = 324, raisedTop: CGFloat = 64
+    private let restTop: CGFloat = 316, raisedTop: CGFloat = 48
 
     private static let categories = ["All": "", "Avatars": "avatar", "Backgrounds": "background", "Body": "body", "Clothing": "shirt"]
     private let order = ["All", "Avatars", "Backgrounds", "Body", "Clothing"]
@@ -48,76 +48,81 @@ struct AppearanceView: View {
         ZStack(alignment: .top) {
             LinearGradient(colors: [Color(white: 0.2), Color(white: 0.3)], startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea(edges: .top)
-            AvatarPicture(image: store.avatar).padding(.top, 56).padding(.bottom, 8)
+            AvatarPicture(image: store.avatar).padding(.top, 50).padding(.bottom, 22)
             topControls
-            HStack(spacing: 28) {
-                Icon("arrow-curl-to-left", size: 22)
-                Icon("arrow-curl-to-right", size: 22)
+            HStack(spacing: 22) {
+                Icon("arrow-curl-to-left", size: 20)
+                Icon("arrow-curl-to-right", size: 20)
             }
-            .font(.builder(17)).foregroundStyle(Color.faint)
-            .padding(.horizontal, 18).frame(height: 44).background(Color.black.opacity(0.75), in: Capsule())
+            .foregroundStyle(Color(white: 0.38))
+            .padding(.horizontal, 12).frame(height: 44).background(Color.pill, in: Capsule())
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-            .padding(.leading, 20).padding(.bottom, 32)
+            .padding(.leading, 20).padding(.bottom, 33)
         }
-        .foregroundStyle(.white)
-        .frame(height: 340)
+        .foregroundStyle(Color.ink)
+        .frame(height: 332)
     }
 
     private var topControls: some View {
-        VStack(spacing: 14) {
-            HStack {
+        VStack(spacing: 13) {
+            HStack(spacing: 0) {
                 Button { if let openMenu { openMenu() } else { dismiss() } } label: {
-                    Icon(openMenu == nil ? "arrow-large-left" : "three-bars-horizontal", size: 28)
+                    Icon(openMenu == nil ? "arrow-large-left" : "three-bars-horizontal", size: 25)
+                        .overlay(alignment: .topTrailing) {
+                            if openMenu != nil { Circle().fill(Color.bloxBlue).frame(width: 8, height: 8).offset(x: 1, y: 1) }
+                        }
                 }
                 .accessibilityIdentifier("appearanceBack")
                 Spacer()
-                tabs
-                Spacer()
                 Button { withAnimation { searching.toggle() } } label: {
-                    Icon("magnifying-glass", size: 26)
+                    Icon("magnifying-glass", size: 25).frame(width: 26)
                 }
                 .accessibilityIdentifier("searchToggle")
             }
+            .frame(height: 28)
+            .overlay(tabs)
+            .padding(.trailing, 3)
             HStack(alignment: .top) {
-                VStack(spacing: 12) {
-                    Button { openProfile?() } label: { Headshot(image: store.avatar, crop: store.profile.crop, size: 38) }
+                VStack(spacing: 13) {
+                    Button { openProfile?() } label: { Headshot(image: store.avatar, crop: store.profile.crop, size: 36) }
                         .accessibilityIdentifier("pillHeadshot")
-                    Icon("person-standing-gear", size: 24)
+                    Icon("person-standing-gear", size: 24).frame(height: 24)
                 }
-                .padding(5).padding(.bottom, 6).background(Color.black.opacity(0.75), in: Capsule())
+                .padding(4).padding(.bottom, 6).background(Color.pill, in: Capsule())
                 Spacer()
-                HStack(spacing: 8) {
-                    RobuxIcon(size: 17)
-                    Text(short(store.profile.robux)).font(.builder(16, .medium))
+                HStack(spacing: 6) {
+                    Icon("robux", size: 17)
+                    Text(short(store.profile.robux)).font(.builder(15, .medium))
                 }
-                .padding(.horizontal, 16).frame(height: 44).background(Color.black.opacity(0.75), in: Capsule())
+                .padding(.horizontal, 16).frame(height: 44).background(Color.pill, in: Capsule())
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("robuxPill")
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 20).padding(.top, 6)
     }
 
     private var tabs: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 1) {
             tab("Marketplace", on: !customize) { customize = false }
             tab("Customize", on: customize) { customize = true }
         }
-        .padding(4).background(Color.black.opacity(0.45), in: Capsule())
+        .padding(4).background(Color.tile.opacity(0.9), in: Capsule())
     }
 
     private func tab(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(title).font(.builder(15, .medium)).padding(.horizontal, 12).frame(height: 34)
-                .background(on ? Color.white.opacity(0.18) : .clear, in: Capsule())
-                .foregroundStyle(.white)
+            Text(title).font(.builder(12, .medium)).padding(.horizontal, 8).frame(height: 31)
+                .background(on ? Color(red: 0.26, green: 0.27, blue: 0.31) : .clear, in: Capsule())
+                .foregroundStyle(Color.ink)
         }
         .accessibilityIdentifier("tab-\(title)")
     }
 
     private var sheet: some View {
         VStack(spacing: 0) {
-            Capsule().fill(Color(white: 0.35)).frame(width: 40, height: 4).padding(.vertical, 10)
+            Capsule().fill(Color(red: 0.19, green: 0.19, blue: 0.22)).frame(width: 36, height: 4)
+                .padding(.top, 10).padding(.bottom, customize ? 12 : 20)
                 .frame(maxWidth: .infinity).contentShape(Rectangle())
                 .gesture(sheetDrag)
                 .onTapGesture { withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) { raised.toggle() } }
@@ -143,28 +148,27 @@ struct AppearanceView: View {
     }
 
     private var categoryTabs: some View {
-        HStack(spacing: 0) {
+        HStack(alignment: .top, spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 22) {
+                HStack(spacing: 0) {
                     ForEach(order, id: \.self) { c in
                         Button {
                             category = c
                             query = ""
                             Task { await load() }
                         } label: {
-                            VStack(spacing: 10) {
-                                Text(c).font(.builder(17, .semibold))
-                                    .foregroundStyle(category == c ? .white : Color.faint)
-                                Rectangle().fill(category == c ? Color.white : .clear).frame(height: 2)
+                            VStack(spacing: 7.5) {
+                                Text(c).font(.builder(16, .bold)).frame(height: 20).padding(.horizontal, 11)
+                                    .foregroundStyle(category == c ? Color.ink : Color.dim)
+                                Rectangle().fill(category == c ? Color.ink : .clear).frame(height: 2.5)
                             }
                             .fixedSize()
                         }
                         .accessibilityIdentifier("cat-\(c)")
                     }
                 }
-                .padding(.leading, 16)
             }
-            Icon("three-sliders-horizontal", size: 24).padding(.horizontal, 16).padding(.bottom, 12)
+            Icon("three-sliders-horizontal", size: 22).frame(height: 20).padding(.leading, 8).padding(.trailing, 22)
         }
     }
 
@@ -177,44 +181,45 @@ struct AppearanceView: View {
         }
         .font(.builder(16)).padding(.horizontal, 12).frame(height: 40)
         .background(Color.field, in: RoundedRectangle(cornerRadius: 10))
-        .padding(.horizontal, 16).padding(.bottom, 10)
+        .padding(.horizontal, 15).padding(.bottom, 10)
     }
 
     private var marketplace: some View {
         let assets = results.filter { !$0.bundle }
         let styles = results.filter(\.bundle)
         let top = category == "All" && query.isEmpty
-        return VStack(alignment: .leading, spacing: 16) {
-            Text(top ? "Recommended For You" : query.isEmpty ? category : "Results").font(.builder(21, .bold))
-                .padding(.top, 8)
-            if loading { ProgressView().frame(maxWidth: .infinity) }
-            if let failure { Text(failure).foregroundStyle(Color.faint) }
+        return VStack(alignment: .leading, spacing: 0) {
+            Text(top ? "Recommended For You" : query.isEmpty ? category : "Results").font(.builder(20, .bold))
+                .frame(height: 24).padding(.top, 10.5).padding(.bottom, 12)
+            if loading { ProgressView().frame(maxWidth: .infinity).padding(.bottom, 12) }
+            if let failure { Text(failure).foregroundStyle(Color.faint).padding(.bottom, 12) }
             LazyVGrid(columns: grid, spacing: 20) {
                 ForEach(top ? Array(assets.prefix(3)) : results) { catalogTile($0) }
             }
             if top && !styles.isEmpty { exploreStyles(styles) }
             if top {
                 LazyVGrid(columns: grid, spacing: 20) { ForEach(Array(assets.dropFirst(3))) { catalogTile($0) } }
+                    .padding(.top, 26)
             }
         }
-        .padding(.horizontal, 16).padding(.bottom, 30)
+        .padding(.leading, 15).padding(.trailing, 14).padding(.bottom, 30)
         .buttonStyle(PressStyle())
     }
 
     private func exploreStyles(_ styles: [Item]) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Explore Styles").font(.builder(21, .bold))
+                Text("Explore Styles").font(.builder(20, .bold)).frame(height: 24)
                 Spacer()
-                Text("See All").font(.builder(14, .medium)).padding(.horizontal, 10).frame(height: 30)
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.white, lineWidth: 1))
+                Text("See All").font(.builder(12, .medium)).frame(width: 55, height: 25)
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.ink, lineWidth: 1))
             }
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 12) { ForEach(styles) { catalogTile($0).frame(width: 118) } }
+                HStack(alignment: .top, spacing: 12) { ForEach(styles) { catalogTile($0).frame(width: 115) } }
             }
-            .padding(.horizontal, -16).contentMargins(.horizontal, 16)
+            .padding(.leading, -15).padding(.trailing, -14).contentMargins(.leading, 15).contentMargins(.trailing, 14)
         }
-        .padding(.top, 10)
+        .padding(.top, 26)
     }
 
     private func catalogTile(_ item: Item) -> some View {
@@ -223,9 +228,9 @@ struct AppearanceView: View {
     }
 
     private var inventory: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Inventory").font(.builder(21, .bold)).padding(.top, 8)
-            Text("Tap to put on or take off. Hold an item to change its price or remove it.").foregroundStyle(Color.faint)
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Inventory").font(.builder(20, .bold)).frame(height: 24).padding(.top, 10)
+            Text("Tap to put on or take off. Hold an item to change its price or remove it.").font(.builder(14.5)).foregroundStyle(Color.faint)
             LazyVGrid(columns: grid, spacing: 20) {
                 ForEach(store.profile.items) { item in
                     Button { store.profile.wear(item, !item.wearing) } label: { tile(item, showCreator: false) }
@@ -237,7 +242,7 @@ struct AppearanceView: View {
                 }
             }
         }
-        .padding(.horizontal, 16).padding(.bottom, 30)
+        .padding(.leading, 15).padding(.trailing, 14).padding(.bottom, 30)
         .buttonStyle(PressStyle())
     }
 

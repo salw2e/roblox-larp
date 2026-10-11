@@ -2,11 +2,17 @@ import SwiftUI
 import BloxKit
 
 extension Color {
-    static let bloxBlue = Color(red: 0.2, green: 0.37, blue: 1)       // #335FFF, Roblox's button blue
-    static let bg = Color(red: 0.07, green: 0.075, blue: 0.09)          // Roblox's dark background
-    static let tile = Color(red: 0.165, green: 0.17, blue: 0.195)       // item and game picture tiles
-    static let field = Color(red: 0.19, green: 0.195, blue: 0.22)
-    static let faint = Color(white: 0.68)
+    static func rgb(_ r: Double, _ g: Double, _ b: Double) -> Color { Color(red: r / 255, green: g / 255, blue: b / 255) }
+    static let bloxBlue = rgb(51, 95, 255)        // buttons and count bubbles
+    static let verifiedBlue = rgb(0, 102, 255)
+    static let online = rgb(57, 197, 130)
+    static let bg = rgb(18, 18, 21)
+    static let tile = rgb(40, 41, 48)
+    static let field = rgb(40, 41, 48)
+    static let pill = rgb(22, 22, 25)
+    static let ink = rgb(247, 247, 248)           // main text
+    static let faint = rgb(213, 215, 221)         // secondary text
+    static let dim = rgb(188, 190, 200)           // unselected category tabs
 }
 
 struct Icon: View {
@@ -46,7 +52,7 @@ struct VerifiedBadge: View {
     var size: CGFloat = 22
     var body: some View {
         ZStack {
-            Icon("verified-backplate", size: size * 1.2, filled: true).foregroundStyle(Color.bloxBlue)
+            Icon("verified-backplate", size: size * 1.2, filled: true).foregroundStyle(Color.verifiedBlue)
             Icon("verified-check", size: size * 1.2, filled: true).foregroundStyle(.white)
         }
     }
@@ -114,7 +120,7 @@ struct Thumb: View {
         RoundedRectangle(cornerRadius: 8).fill(Color.tile)
             .aspectRatio(1, contentMode: .fit)
             .overlay {
-                RemoteImage(url: url, fill: false).padding(10)
+                RemoteImage(url: url, fill: false).padding(3)
             }
             .clipShape(RoundedRectangle(cornerRadius: 8))
     }
@@ -122,13 +128,13 @@ struct Thumb: View {
 
 struct PriceLine: View {
     let price: Int?
-    var size: CGFloat = 14
+    var size: CGFloat = 14.5
     var body: some View {
-        HStack(spacing: 5) {
-            if let price, price > 0 { RobuxIcon(size: size * 1.05) }
-            Text(priceText(price)).font(.builder(size, .medium))
+        HStack(spacing: 3) {
+            if let price, price > 0 { Icon("robux", size: size * 1.15) }
+            Text(priceText(price)).font(.builder(size))
         }
-        .foregroundStyle(.primary)
+        .foregroundStyle(Color.ink)
     }
 }
 
@@ -136,17 +142,17 @@ struct ItemCard: View {
     let item: Item
     var showCreator = false
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 0) {
             Thumb(url: item.thumb)
-            Text(item.name).font(.builder(14, .bold)).lineLimit(1).padding(.top, 4)
+            Text(item.name).font(.builder(14.5, .bold)).lineLimit(1).frame(height: 18).padding(.top, 10)
             if showCreator {
                 HStack(spacing: 4) {
                     Text(item.creator).foregroundStyle(Color.faint).lineLimit(1)
-                    if item.showsCreatorCheck { VerifiedBadge(size: 13) }
+                    if item.showsCreatorCheck { VerifiedBadge(size: 12) }
                 }
-                .font(.builder(13))
+                .font(.builder(14.5)).frame(height: 18).padding(.top, 3)
             }
-            PriceLine(price: item.price)
+            PriceLine(price: item.price).frame(height: 18).padding(.top, showCreator ? 6 : 3)
         }
     }
 }
@@ -195,19 +201,19 @@ struct NumberField: View {
 struct WideGameCard: View {
     let game: Game
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 0) {
             RoundedRectangle(cornerRadius: 8).fill(Color.tile)
                 .aspectRatio(16 / 9, contentMode: .fit)
                 .overlay {
                     RemoteImage(url: game.wide ?? game.icon, fill: true)
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 8))
-            Text(game.name).font(.builder(16, .bold)).lineLimit(1).padding(.top, 6)
-            HStack(spacing: 5) {
-                Icon("thumb-up", size: 18, filled: true)
+            Text(game.name).font(.builder(14.5, .bold)).lineLimit(1).frame(height: 18).padding(.top, 12)
+            HStack(spacing: 4) {
+                Icon("thumb-up", size: 16, filled: true)
                 Text(game.rating.map { "\($0)% Rating" } ?? "\(short(game.playing)) Playing")
             }
-            .font(.builder(15)).foregroundStyle(Color.faint)
+            .font(.builder(14.5)).foregroundStyle(Color.faint).frame(height: 18).padding(.top, 3)
         }
     }
 }
@@ -239,7 +245,7 @@ struct CountBubble: View {
     var size: CGFloat = 22
     var body: some View {
         if n > 0 {
-            Text(n > 99 ? "99+" : "\(n)").font(.builder(size * 0.62, .semibold)).foregroundStyle(.white)
+            Text(n > 99 ? "99+" : "\(n)").font(.builder(size * 0.68, .bold)).foregroundStyle(.white)
                 .padding(.horizontal, size * 0.28).frame(minWidth: size, minHeight: size)
                 .background(Color.bloxBlue, in: Capsule())
         }

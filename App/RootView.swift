@@ -73,30 +73,31 @@ struct RootView: View {
     }
 
     private var bar: some View {
-        HStack {
+        HStack(spacing: 0) {
             ForEach(MainTab.allCases, id: \.self) { t in
                 Button { tab = t } label: {
-                    VStack(spacing: 5) {
-                        icon(t).frame(height: 30)
-                        Text(t.rawValue).font(.builder(14, .medium))
+                    VStack(spacing: 4.5) {
+                        icon(t).frame(height: 24)
+                        Text(t.rawValue).font(.builder(10.5, .medium)).frame(height: 13)
                     }
-                    .foregroundStyle(tab == t ? Color.white : Color.faint)
+                    .foregroundStyle(tab == t ? Color.ink : Color.faint)
                     .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
                 }
                 .accessibilityIdentifier("tab-\(t.rawValue)")
             }
         }
-        .padding(.top, 8)
+        .padding(.horizontal, 5.5).padding(.top, 9).padding(.bottom, 1.5)
         .background(Color.bg)
     }
 
     @ViewBuilder
     private func icon(_ t: MainTab) -> some View {
         switch t {
-        case .home: Icon("house", size: 28, filled: tab == t)
-        case .moments: Icon("moments", size: 28, filled: tab == t)
-        case .chat: Icon("speech-bubble-align-center", size: 28, filled: tab == t)
-        case .me: Headshot(image: store.avatar, crop: store.profile.crop, size: 30)
+        case .home: Icon("house", size: 24, filled: tab == t)
+        case .moments: Icon("moments", size: 24, filled: tab == t)
+        case .chat: Icon("speech-bubble-align-center", size: 24, filled: tab == t)
+        case .me: Headshot(image: store.avatar, crop: store.profile.crop, size: 28)
         }
     }
 }
@@ -140,21 +141,22 @@ struct HomeView: View {
     }
 
     private var topBar: some View {
-        HStack(spacing: 22) {
+        HStack(spacing: 0) {
             Button(action: openMenu) {
-                Icon("three-bars-horizontal", size: 28)
-                    .overlay(alignment: .topTrailing) { Circle().fill(Color.bloxBlue).frame(width: 9, height: 9).offset(x: 5, y: -4) }
+                Icon("three-bars-horizontal", size: 25)
+                    .overlay(alignment: .topTrailing) { Circle().fill(Color.bloxBlue).frame(width: 8, height: 8).offset(x: 1, y: 1) }
             }
             .accessibilityIdentifier("menuButton")
-            Wordmark(size: 20).padding(.leading, -8)
+            Wordmark(size: 19.2).padding(.leading, 11)
             Spacer()
-            Icon("magnifying-glass", size: 26)
-            RobuxIcon(size: 22)
-            Icon("bell", size: 26)
-                .overlay(alignment: .topTrailing) { CountBubble(n: store.profile.notifications, size: 19).offset(x: 10, y: -10) }
+            Icon("magnifying-glass", size: 25).frame(width: 26)
+            Icon("robux", size: 26).frame(width: 26).padding(.leading, 18.5)
+            Icon("bell", size: 24).frame(width: 26).padding(.leading, 18.5)
+                .overlay(alignment: .topTrailing) { CountBubble(n: store.profile.notifications, size: 17).offset(x: 3, y: -6) }
         }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 14)
+        .foregroundStyle(Color.ink)
+        .frame(height: 28)
+        .padding(.leading, 20).padding(.trailing, 22).padding(.top, 6).padding(.bottom, 29)
     }
 
     private var tabs: some View {
@@ -162,9 +164,9 @@ struct HomeView: View {
             ForEach(["For you", "Charts"], id: \.self) { t in
                 let on = (t == "Charts") == charts
                 Button { charts = t == "Charts" } label: {
-                    VStack(spacing: 12) {
-                        Text(t).font(.builder(16)).foregroundStyle(on ? .white : Color.faint)
-                        Rectangle().fill(on ? Color.white : Color(white: 0.25)).frame(height: on ? 1.5 : 1)
+                    VStack(spacing: 14) {
+                        Text(t).font(.builder(14.5)).frame(height: 18).foregroundStyle(Color.faint)
+                        Rectangle().fill(on ? Color.ink : Color.tile).frame(height: 1.5)
                     }
                 }
                 .accessibilityIdentifier("home-\(t)")
@@ -176,22 +178,22 @@ struct HomeView: View {
     private var forYou: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button { open(.profile) } label: {
-                HStack(spacing: 14) {
-                    Headshot(image: store.avatar, crop: store.profile.crop, size: 38)
-                    Text(store.profile.displayName).font(.builder(21, .bold))
+                HStack(spacing: 12) {
+                    Headshot(image: store.avatar, crop: store.profile.crop, size: 36)
+                    Text(store.profile.displayName).font(.builder(20, .bold))
                 }
             }
             .accessibilityIdentifier("homeName")
-            .padding(.top, 22)
-            friends.padding(.top, 22)
+            .padding(.top, 24)
+            friends.padding(.top, 25).padding(.bottom, 3.5)
             section("Recommended For You") {
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .top), GridItem(.flexible(), alignment: .top)], spacing: 20) {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .top), GridItem(.flexible(), alignment: .top)], spacing: 17) {
                     ForEach(recommended) { WideGameCard(game: $0).accessibilityIdentifier("homeGame") }
                 }
             }
             if let failure { Text(failure).foregroundStyle(Color.faint).padding(.top, 12) }
             if !continueGames.isEmpty {
-                section("Continue  ›") { row(continueGames) }
+                section("Continue", chevron: true) { row(continueGames) }
             }
         }
         .padding(.horizontal, 20).padding(.bottom, 24)
@@ -199,29 +201,32 @@ struct HomeView: View {
 
     private var friends: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .top, spacing: 14) {
+            HStack(alignment: .top, spacing: 10.5) {
                 Button { open(.friends) } label: {
-                    VStack(spacing: 8) {
-                        Circle().fill(Color.field).frame(width: 112, height: 112)
+                    VStack(spacing: 0) {
+                        Circle().fill(Color.tile).frame(width: 113, height: 113)
                             .overlay(Icon("person-plus", size: 46))
-                            .overlay(alignment: .topTrailing) { CountBubble(n: store.profile.requests, size: 22).offset(x: -4, y: 6) }
-                        Text("Add Friends").font(.builder(14, .semibold))
+                            .overlay(alignment: .topTrailing) { CountBubble(n: store.profile.requests, size: 16).offset(x: -4, y: 8) }
+                        Text("Add Friends").font(.builder(12, .bold)).frame(height: 15).padding(.top, 8.5)
+                        Text(" ").font(.builder(12)).frame(height: 15)
                     }
-                    .frame(width: 114)
+                    .foregroundStyle(Color.faint)
+                    .frame(width: 113)
                 }
                 ForEach(store.profile.friendList) { f in
-                    VStack(spacing: 2) {
-                        RemoteCircle(url: f.headshot, size: 112)
+                    VStack(spacing: 0) {
+                        RemoteCircle(url: f.headshot, size: 113)
                             .overlay(alignment: .bottomTrailing) {
                                 if f.online {
-                                    Circle().fill(Color.green).frame(width: 22, height: 22)
-                                        .overlay(Circle().stroke(Color.bg, lineWidth: 3)).offset(x: -6, y: -6)
+                                    Circle().fill(Color.bg).frame(width: 23, height: 23)
+                                        .overlay(Circle().fill(Color.online).frame(width: 17, height: 17)).offset(x: -2.5, y: -2.5)
                                 }
                             }
-                        Text(f.displayName).font(.builder(14, .semibold)).lineLimit(1).padding(.top, 6)
-                        if !f.status.isEmpty { Text(f.status).font(.builder(13)).foregroundStyle(Color.faint).lineLimit(1) }
+                        Text(f.displayName).font(.builder(12, .bold)).lineLimit(1).frame(height: 15).padding(.top, 8.5)
+                        Text(f.status.isEmpty ? " " : f.status).font(.builder(12)).lineLimit(1).frame(height: 15)
                     }
-                    .frame(width: 114)
+                    .foregroundStyle(Color.faint)
+                    .frame(width: 113)
                     .accessibilityIdentifier("homeFriend")
                 }
             }
@@ -241,17 +246,21 @@ struct HomeView: View {
 
     private func row(_ games: [Game]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .top, spacing: 12) { ForEach(games) { WideGameCard(game: $0).frame(width: 180) } }
+            HStack(alignment: .top, spacing: 12) { ForEach(games) { WideGameCard(game: $0).frame(width: 194) } }
         }
         .padding(.horizontal, -20).contentMargins(.horizontal, 20)
     }
 
-    private func section<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
+    private func section<C: View>(_ title: String, chevron: Bool = false, @ViewBuilder _ content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(title).font(.builder(22, .bold))
+            HStack(spacing: 8) {
+                Text(title).font(.builder(20, .bold))
+                if chevron { Icon("chevron-large-right", size: 20) }
+            }
+            .frame(height: 24)
             content()
         }
-        .padding(.top, 30)
+        .padding(.top, 27)
     }
 
     private var recommended: [Game] {
