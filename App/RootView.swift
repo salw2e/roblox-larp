@@ -11,6 +11,7 @@ struct RootView: View {
     @State private var settings = false
     @State private var robux = false
     @State private var game: Game?
+    @State private var gameFull = false
     @State private var item: Item?
     @State private var friend: Int64?
     static let friendTop: CGFloat = 353
@@ -34,9 +35,9 @@ struct RootView: View {
                 Color.black.opacity(0.55).ignoresSafeArea().onTapGesture(perform: closeGame)
                     .transition(.identity)
                     .accessibilityIdentifier("closeGame").accessibilityLabel("Close game").accessibilityAddTraits(.isButton)
-                GamePage(game: g, close: closeGame, open: { open($0) })
+                GamePage(game: g, close: closeGame, open: { open($0) }, full: $gameFull)
                     .id(g.id)
-                    .padding(.top, Self.gameTop)
+                    .padding(.top, gameFull ? 0 : Self.gameTop)
                     .transition(.move(edge: .bottom)).zIndex(1)
             }
         }
@@ -139,6 +140,7 @@ struct RootView: View {
         case .robux:
             robux = true
         case .game(let g):
+            gameFull = game != nil && gameFull
             withAnimation(Self.sheetRise) { game = g }
         case .item(let i):
             item = i

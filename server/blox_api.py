@@ -312,6 +312,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/budget":
             return self.reply(200, budget_now())
+        g = re.fullmatch(r"/game/(\d{1,15})", self.path)
+        if g:
+            try:
+                return self.reply(200, game_extras(int(g.group(1))))
+            except Refused as e:
+                return self.reply(422, {"error": str(e)})
         b = re.fullmatch(r"/badges/(\d{1,15})", self.path)
         if b:
             try:
@@ -387,6 +393,19 @@ def ci_may_have_key(token, claims=None):
 
 badge_cache = {}
 
+extras_cache = {}
+
+def game_extras(universe):
+    when, found = extras_cache.get(universe, (0, None))
+    if found is not None and time.time() - when < 600:
+        return found
+    links = rbx(f"https://games.roblox.com/v1/games/{universe}/social-links/list")
+    voice = rbx(f"https://voice.roblox.com/v1/settings/universe/{universe}")
+    found = {"social": [{"type": x.get("type", ""), "url": x.get("url", ""), "title": x.get("title", "")} for x in links.get("data", [])],
+             "voice": bool(voice.get("isUniverseEnabledForVoice")), "camera": bool(voice.get("isUniverseEnabledForAvatarVideo"))}
+    extras_cache[universe] = (time.time(), found)
+    return found
+
 def badges_of(user_id):
     when, found = badge_cache.get(user_id, (0, None))
     if found is not None and time.time() - when < 600:
@@ -433,6 +452,8 @@ def demo():
     normal = [l for l in upright(text, lean @ yaw @ np.array([0.3, 0.2, -1])).split("\n") if l.startswith("vn ")][0]
     assert np.allclose([float(x) for x in normal.split()[1:]], [0, 0, -1], atol=1e-4), normal        # front faces -Z
     assert upright("g Player1\n" + "\n".join(f"v {p[0]} {p[1]} {p[2]}" for p in box) + "\nf 1 2 3 4\nf 5 6 7 8", np.array([0, 0.3, -1.0])).startswith("g Player1\nv -1 -2")  # already right: untouched
+    extras = game_extras(383310974)
+    assert "social" in extras and isinstance(extras["voice"], bool), extras
     got = badges_of(261)
     assert isinstance(got, list) and all("name" in x for x in got), got
     user = look_of_user("builderman")

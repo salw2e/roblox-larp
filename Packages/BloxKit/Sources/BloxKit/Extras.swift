@@ -132,6 +132,15 @@ public struct GameInfo: Equatable, Sendable {
     public var created: String      // 7/14/2017
     public var updated: String
     public var creatorVerified = false
+    public var subgenre = ""
+}
+
+public struct GamePass: Equatable, Sendable {
+    public var id: Int64; public var name: String; public var price: Int?
+}
+
+public struct SocialLink: Equatable, Sendable {
+    public var type: String; public var url: String; public var title: String
 }
 
 public struct GameEvent: Equatable, Sendable {
@@ -190,7 +199,7 @@ extension Parse {
             struct C: Decodable { let name: String?; let hasVerifiedBadge: Bool? }
             struct G: Decodable {
                 let description: String?; let creator: C?; let playing: Int?; let visits: Int?; let favoritedCount: Int?
-                let maxPlayers: Int?; let genre_l1: String?; let genre: String?; let created: String?; let updated: String?
+                let maxPlayers: Int?; let genre_l1: String?; let genre_l2: String?; let genre: String?; let created: String?; let updated: String?
             }
             let data: [G]
         }
@@ -198,7 +207,28 @@ extension Parse {
         return GameInfo(description: g.description ?? "", creator: g.creator?.name ?? "", playing: g.playing ?? 0,
                         visits: g.visits ?? 0, favorites: g.favoritedCount ?? 0, maxPlayers: g.maxPlayers ?? 0,
                         genre: g.genre_l1 ?? g.genre ?? "", created: day(g.created), updated: day(g.updated),
-                        creatorVerified: g.creator?.hasVerifiedBadge ?? false)
+                        creatorVerified: g.creator?.hasVerifiedBadge ?? false, subgenre: g.genre_l2 ?? "")
+    }
+
+    public static func gamePasses(_ data: Data) -> [GamePass] {
+        struct R: Decodable { struct P: Decodable { let id: Int64; let name: String?; let displayName: String?; let price: Int?; let isForSale: Bool? }; let gamePasses: [P] }
+        return (try? JSONDecoder().decode(R.self, from: data))?.gamePasses.map {
+            GamePass(id: $0.id, name: $0.displayName ?? $0.name ?? "", price: $0.isForSale == false ? nil : $0.price)
+        } ?? []
+    }
+
+    public static func alsoJoin(_ data: Data) -> [Game] {
+        struct R: Decodable { struct G: Decodable { let universeId: Int64; let name: String; let playerCount: Int?; let totalUpVotes: Int?; let totalDownVotes: Int? }; let games: [G] }
+        return (try? JSONDecoder().decode(R.self, from: data))?.games.map { g in
+            let up = g.totalUpVotes ?? 0, all = up + (g.totalDownVotes ?? 0)
+            return Game(id: g.universeId, name: g.name, playing: g.playerCount ?? 0, rating: all > 0 ? Int((Double(up) * 100 / Double(all)).rounded()) : nil)
+        } ?? []
+    }
+
+    public static func gameExtras(_ data: Data) -> (social: [SocialLink], voice: Bool, camera: Bool)? {
+        struct R: Decodable { struct L: Decodable { let type: String; let url: String; let title: String? }; let social: [L]; let voice: Bool; let camera: Bool }
+        guard let r = try? JSONDecoder().decode(R.self, from: data) else { return nil }
+        return (r.social.map { SocialLink(type: $0.type, url: $0.url, title: $0.title ?? "") }, r.voice, r.camera)
     }
 
     public static func itemDetails(_ data: Data) -> [ItemDetail] {

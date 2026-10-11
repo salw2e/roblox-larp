@@ -409,6 +409,22 @@ final class ParseTests: XCTestCase {
         XCTAssertTrue(robuxPacksFor(shortfall: 0).isEmpty && robuxPacksFor(shortfall: 30_000).isEmpty)
     }
 
+    func testGamePageRows() throws {
+        XCTAssertEqual(Parse.gameInfo(try fixture("game-details"))?.subgenre, "Pet Care")
+        let passes = Parse.gamePasses(try fixture("game-passes"))
+        XCTAssertEqual(passes.count, 10)
+        XCTAssertEqual(passes.first?.name, "1.25x Candy Multiplier")
+        XCTAssertEqual(passes.first?.price, 50)
+        let also = Parse.alsoJoin(try fixture("also-join"))
+        XCTAssertEqual(also.count, 6)
+        XCTAssertEqual(also.first?.name, "Bee Swarm Simulator")
+        XCTAssertTrue((90...100).contains(also.first?.rating ?? 0))           // 3.0M up, 140K down
+        let extras = try XCTUnwrap(Parse.gameExtras(try fixture("game-extras")))
+        XCTAssertTrue(extras.social.contains { $0.type == "Discord" && $0.url.hasPrefix("https://") })
+        XCTAssertFalse(extras.voice)
+        XCTAssertNil(Parse.gameExtras(Data("{}".utf8)))
+    }
+
     func testPlusBackgrounds() throws {
         let plus = Parse.plusBackgrounds(try fixture("backgrounds-roblox"))
         XCTAssertEqual(plus.map(\.name), ["Soundwave", "Stargazer", "Stardust Stage", "Cotton Candy Horizon"])

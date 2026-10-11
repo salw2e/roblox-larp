@@ -763,7 +763,12 @@ struct GamePage: View {
     let game: Game
     var close: () -> Void = {}
     var open: (Page) -> Void = { _ in }
+    @Binding var full: Bool
     @State private var info: GameInfo?
+    @State private var more: Roblox.GameMore?
+    @State private var wholeText = false
+    @State private var pass: GamePass?          // the Store pass being bought
+    @State private var short = false
     @State private var filled: Game?
     @State private var slides: [String] = []
     @State private var events: [GameEvent] = []
@@ -779,28 +784,42 @@ struct GamePage: View {
     var body: some View {
         let shown = filled ?? game
         VStack(spacing: 0) {
-            Capsule().fill(Color.rgb(58, 59, 66)).frame(width: 39, height: 4)
-                .frame(maxWidth: .infinity).frame(height: 22).contentShape(Rectangle())
-                .accessibilityIdentifier("gameHandle")
+            if full {
+                HStack {
+                    Button(action: close) { Icon("x", size: 26).frame(width: 44, height: 44) }
+                        .accessibilityIdentifier("gameClose").accessibilityLabel("Close")
+                    Spacer()
+                }
+                .padding(.leading, 14).frame(height: 48).contentShape(Rectangle())
+            } else {
+                Capsule().fill(Color.rgb(58, 59, 66)).frame(width: 39, height: 4)
+                    .frame(maxWidth: .infinity).frame(height: 22).contentShape(Rectangle())
+                    .accessibilityIdentifier("gameHandle")
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    header(shown)
-                    pictures(shown).padding(.top, 28)
+                    if !full { header(shown) }
+                    pictures(shown).padding(.top, full ? 0 : 28)
                     chips(shown).padding(.top, 22)
                     if !events.isEmpty { eventRow.padding(.top, 28) }
                     if let info {
-                        Text("About").font(.builder(20, .bold)).padding(.top, 28)
-                        Text(info.description).font(.builder(14.5)).foregroundStyle(Color.faint).padding(.top, 8)
+                        Text("Description").font(.builder(20, .bold)).padding(.top, 28)
+                        Text(info.description).font(.builder(14.5)).foregroundStyle(Color.faint).lineLimit(wholeText ? nil : 4).padding(.top, 10)
                             .accessibilityIdentifier("gameAbout")
-                        VStack(spacing: 0) {
-                            fact("Favorites", grouped(info.favorites))
-                            fact("Visits", grouped(info.visits))
-                            fact("Created", info.created)
-                            fact("Updated", info.updated)
-                            fact("Server Size", "\(info.maxPlayers)")
-                            fact("Genre", info.genre)
+                        Button(wholeText ? "less" : "more") { wholeText.toggle() }
+                            .font(.builder(14.5, .medium)).underline().padding(.top, 4)
+                        if let passes = more?.passes, !passes.isEmpty { store(passes).padding(.top, 28) }
+                        information(info).padding(.top, 28)
+                        if let links = more?.social, !links.isEmpty { social(links).padding(.top, 28) }
+                        if let also = more?.also, !also.isEmpty {
+                            Text("People Also Join").font(.builder(20, .bold)).padding(.top, 28).padding(.bottom, 12)
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(alignment: .top, spacing: 12) {
+                                    ForEach(also) { g in Button { open(.game(g)) } label: { GameCard(game: g).frame(width: 117) }.buttonStyle(PressStyle()) }
+                                }
+                            }
+                            .padding(.horizontal, -20).contentMargins(.horizontal, 20)
                         }
-                        .padding(.top, 16)
                     } else if loaded {
                         Button { Task { await load() } } label: {
                             Text("Couldn't load this experience's details. Tap to try again.").font(.builder(14.5)).foregroundStyle(Color.faint)
@@ -810,16 +829,30 @@ struct GamePage: View {
                 }
                 .padding(.horizontal, 20).padding(.top, 11).padding(.bottom, 24)
             }
+            .simultaneousGesture(DragGesture(minimumDistance: 12).onChanged { g in
+                if !full, g.translation.height < -24 { withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { full = true } }
+            })
             bar
         }
-        .background(Self.sheet, in: UnevenRoundedRectangle(topLeadingRadius: 16, topTrailingRadius: 16))
+        .background(Self.sheet, in: UnevenRoundedRectangle(topLeadingRadius: full ? 0 : 16, topTrailingRadius: full ? 0 : 16))
         .offset(y: max(pull, 0))
         .gesture(
             DragGesture(minimumDistance: 6)
                 .updating($pull) { g, pull, _ in pull = g.translation.height }
-                .onEnded { g in if g.predictedEndTranslation.height > 140 { close() } },
+                .onEnded { g in
+                    let flick = g.predictedEndTranslation.height
+                    if flick < -80 { withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { full = true } }
+                    else if flick > 140 { if full { withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { full = false } } else { close() } }
+                },
             including: .gesture
         )
+        .alert(pass.map { "Buy \($0.name)" } ?? "", isPresented: Binding(get: { pass != nil }, set: { if !$0 { pass = nil } }), presenting: pass) { p in
+            Button("Buy Now") { if !store.profile.send(p.price ?? 0) { short = true } }
+            Button("Cancel", role: .cancel) {}
+        } message: { p in Text("Buy \(p.name) for \(grouped(p.price ?? 0)) Robux?") }
+        .alert("Not enough Robux", isPresented: $short) {
+            Button("OK", role: .cancel) {}
+        } message: { Text("Get more on the Buy Robux page.") }
         .animation(.spring(response: 0.28, dampingFraction: 0.92), value: pull == 0)
         .task { await load() }
     }
@@ -945,9 +978,11 @@ struct GamePage: View {
         async let m = Roblox.maturity(game.id)
         async let s = Roblox.slides(game.id)
         async let e = Roblox.events(game.id)
+        async let g = Roblox.gameMore(game.id)
         if game.wide == nil || game.rating == nil || game.icon == nil { filled = await Roblox.complete([game]).first }
         (info, maturity, slides) = await (i, m, s)
         (events, eventPictures) = await e
+        more = await g
         loaded = true
     }
 
@@ -958,20 +993,30 @@ struct GamePage: View {
                 HStack(alignment: .top, spacing: 12) {
                     ForEach(events.indices, id: \.self) { i in
                         let e = events[i]
-                        VStack(alignment: .leading, spacing: 4) {
-                            RoundedRectangle(cornerRadius: 8).fill(Color.tile).aspectRatio(16 / 9, contentMode: .fit)
+                        let live = e.when() == "Live now"
+                        VStack(alignment: .leading, spacing: 0) {
+                            Color.tile.aspectRatio(16 / 9, contentMode: .fit)
                                 .overlay { RemoteImage(url: e.media.flatMap { eventPictures[$0] }, fill: true) }
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .clipped()
                                 .overlay(alignment: .topLeading) {
-                                    let live = e.when() == "Live now"
-                                    Text(live ? "Live" : e.when()).font(.builder(12, .bold)).padding(.horizontal, 8).frame(height: 22)
-                                        .background(live ? Color.rgb(226, 35, 26) : Color.black.opacity(0.6), in: Capsule())
-                                        .foregroundStyle(.white).padding(8)
+                                    Text(live ? "Happening now" : e.when()).font(.builder(12, .medium)).padding(.horizontal, 9).frame(height: 24)
+                                        .background(Color.white, in: Capsule()).foregroundStyle(.black).padding(10)
                                 }
-                            Text(e.title).font(.builder(14.5, .bold)).lineLimit(1).padding(.top, 6)
-                            if !e.subtitle.isEmpty { Text(e.subtitle).font(.builder(12)).foregroundStyle(Color.faint).lineLimit(1) }
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(e.title).font(.builder(14.5, .bold)).lineLimit(1)
+                                Text(e.subtitle.isEmpty ? " " : e.subtitle).font(.builder(13)).foregroundStyle(Color.faint).lineLimit(1)
+                                Button { join() } label: {
+                                    Text("Join Event").font(.builder(13, .medium)).foregroundStyle(.white).frame(maxWidth: .infinity).frame(height: 32)
+                                        .background(Color.bloxBlue, in: RoundedRectangle(cornerRadius: 6))
+                                }
+                                .buttonStyle(PressStyle())
+                                .padding(.top, 8)
+                            }
+                            .padding(10)
                         }
-                        .frame(width: 300)
+                        .background(Color.rgb(32, 33, 38))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .frame(width: 360)
                         .accessibilityIdentifier("gameEvent")
                     }
                 }
@@ -980,14 +1025,93 @@ struct GamePage: View {
         }
     }
 
-    private func fact(_ name: String, _ value: String) -> some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text(name).font(.builder(14.5)).foregroundStyle(Color.faint)
-                Spacer()
-                Text(value).font(.builder(14.5))
+    private func join() {
+        joining = true
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            joining = false
+        }
+    }
+
+    private func store(_ passes: [GamePass]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Text("Store").font(.builder(20, .bold))
+                Icon("chevron-large-right", size: 16)
             }
-            .frame(height: 40)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(passes, id: \.id) { p in
+                        VStack(alignment: .leading, spacing: 8) {
+                            RoundedRectangle(cornerRadius: 8).fill(Color.tile).frame(width: 130, height: 130)
+                                .overlay { RemoteImage(url: more?.passIcons[p.id], fill: false).padding(14) }
+                            Text(p.name).font(.builder(14.5, .bold)).lineLimit(1).frame(width: 130, alignment: .leading)
+                            Button { if p.price != nil { pass = p } } label: {
+                                HStack(spacing: 4) {
+                                    if let price = p.price { Icon("robux", size: 15); Text(grouped(price)).font(.builder(13, .medium)) }
+                                    else { Text("Off Sale").font(.builder(13, .medium)) }
+                                }
+                                .foregroundStyle(.black).frame(width: 130, height: 30).background(Color.white.opacity(p.price == nil ? 0.5 : 1), in: RoundedRectangle(cornerRadius: 6))
+                            }
+                            .buttonStyle(PressStyle())
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, -20).contentMargins(.horizontal, 20)
+        }
+    }
+
+    private func information(_ info: GameInfo) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Information").font(.builder(20, .bold)).padding(.bottom, 4)
+            fact("Visits", short(info.visits))
+            if let m = maturity { fact("Content Maturity", m.replacingOccurrences(of: "Maturity: ", with: ""), arrow: true) }
+            if !info.creator.isEmpty { fact("Developer", info.creator, badge: info.creatorVerified, arrow: true) }
+            fact("Server Size", "\(info.maxPlayers)")
+            if !info.genre.isEmpty { fact("Genre", info.genre) }
+            if !info.subgenre.isEmpty { fact("Subgenre", info.subgenre) }
+            fact("Created", info.created)
+            fact("Updated", info.updated)
+            if let v = more?.voice { fact("Voice Chat", v ? "Supported" : "Not supported") }
+            if let c = more?.camera { fact("Camera", c ? "Supported" : "Not supported") }
+        }
+    }
+
+    private func social(_ links: [SocialLink]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Social Media").font(.builder(20, .bold))
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 16) {
+                    ForEach(links, id: \.url) { l in
+                        if let u = URL(string: l.url) {
+                            Link(destination: u) {
+                                VStack(spacing: 8) {
+                                    Circle().fill(Color.tile).frame(width: 92, height: 92)
+                                        .overlay(Icon(["Discord": "discord", "YouTube": "youtube", "Twitter": "twitter", "Twitch": "twitch",
+                                                       "Facebook": "facebook", "Guilded": "guilded"][l.type] ?? "chain-link", size: 34, filled: true))
+                                    Text(l.type).font(.builder(12)).lineLimit(1)
+                                }
+                                .frame(width: 96)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, -20).contentMargins(.horizontal, 20)
+        }
+    }
+
+    private func fact(_ name: String, _ value: String, badge: Bool = false, arrow: Bool = false) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Text(name).font(.builder(16)).foregroundStyle(Color.faint)
+                Spacer()
+                Text(value).font(.builder(16, .bold)).lineLimit(1)
+                if badge { VerifiedBadge(size: 14).fixedSize() }
+                if arrow { Icon("chevron-large-right", size: 14) }
+            }
+            .frame(height: 57)
             Divider().overlay(Color.tile)
         }
     }

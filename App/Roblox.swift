@@ -313,6 +313,30 @@ enum Roblox {
         return await withThumbs(Parse.plusBackgrounds(data))
     }
 
+    struct GameMore {
+        var passes: [GamePass] = []
+        var passIcons: [Int64: String] = [:]
+        var also: [Game] = []
+        var social: [SocialLink] = []
+        var voice: Bool?
+        var camera: Bool?
+    }
+
+    static func gameMore(_ universe: Int64) async -> GameMore {
+        async let passData = try? fetch(url("https://apis.roblox.com/game-passes/v1/universes/\(universe)/game-passes", ["passView": "Full", "pageSize": "10"]))
+        async let alsoData = try? fetch(url("https://games.roblox.com/v1/games/recommendations/game/\(universe)", ["maxRows": "10"]))
+        async let extraData = try? fetch(URL(string: service + "/game/\(universe)")!)
+        var more = GameMore()
+        more.passes = (await passData).map(Parse.gamePasses) ?? []
+        if !more.passes.isEmpty {
+            more.passIcons = await pictures("https://thumbnails.roblox.com/v1/game-passes",
+                                            ["gamePassIds": list(more.passes.map(\.id)), "size": "150x150", "format": "Png"])
+        }
+        more.also = await complete((await alsoData).map(Parse.alsoJoin) ?? [])
+        if let x = (await extraData).flatMap(Parse.gameExtras) { (more.social, more.voice, more.camera) = (x.social, x.voice, x.camera) }
+        return more
+    }
+
     static func slides(_ universe: Int64) async -> [String] {
         let u = url("https://thumbnails.roblox.com/v1/games/multiget/thumbnails",
                     ["universeIds": "\(universe)", "countPerUniverse": "10", "size": "768x432", "format": "Png"])
