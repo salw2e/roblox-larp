@@ -5,6 +5,7 @@ import BloxKit
 struct ProfileView: View {
     @EnvironmentObject var store: Store
     var full = false                       // dragged up to fill the screen
+    var statusBar: CGFloat = 0
     @Binding var atTop: Bool
     var pulling = false
     var close: () -> Void = {}
@@ -59,7 +60,7 @@ struct ProfileView: View {
                         .frame(width: 36, height: 36).background(Color.pill.opacity(0.6), in: Circle())
                 }
                 .accessibilityIdentifier("closeProfile").accessibilityLabel("Close")
-                .padding(.leading, 20).padding(.top, 8)
+                .padding(.leading, 20).padding(.top, statusBar + 8)
             }
         }
         .sheet(isPresented: $editing) { EditProfileView() }

@@ -119,7 +119,8 @@ struct RootView: View {
     private var profileSheet: some View {
         GeometryReader { geo in
             let rest = profileFull ? 0 : geo.safeAreaInsets.top + Self.profileHalfTop
-            ProfileView(full: profileFull, atTop: $profileAtTop, pulling: profilePull != 0, close: closeProfile, open: { open($0) }) {
+            ProfileView(full: profileFull, statusBar: geo.safeAreaInsets.top, atTop: $profileAtTop, pulling: profilePull != 0,
+                        close: closeProfile, open: { open($0) }) {
                 closeProfile()
                 tab = .me
             }

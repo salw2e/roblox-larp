@@ -121,6 +121,7 @@ final class BloxUITests: XCTestCase {
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12)).tap()
         XCTAssertTrue(any("profileCodeImage").waitForNonExistence(timeout: 5))
         app.buttons["closeProfile"].tap()
+        XCTAssertTrue(app.buttons["closeProfile"].waitForNonExistence(timeout: 3), "the X closes the profile")
 
         XCTAssertTrue(any("homeFriend").waitForExistence(timeout: 5))
         sleep(2)
