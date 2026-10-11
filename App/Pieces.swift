@@ -114,9 +114,7 @@ struct Thumb: View {
         RoundedRectangle(cornerRadius: 8).fill(Color.tile)
             .aspectRatio(1, contentMode: .fit)
             .overlay {
-                AsyncImage(url: url.flatMap(URL.init(string:))) { img in
-                    img.resizable().scaledToFit().padding(10)
-                } placeholder: { EmptyView() }
+                RemoteImage(url: url, fill: false).padding(10)
             }
             .clipShape(RoundedRectangle(cornerRadius: 8))
     }
@@ -201,8 +199,7 @@ struct WideGameCard: View {
             RoundedRectangle(cornerRadius: 8).fill(Color.tile)
                 .aspectRatio(16 / 9, contentMode: .fit)
                 .overlay {
-                    AsyncImage(url: (game.wide ?? game.icon).flatMap(URL.init(string:))) { $0.resizable().scaledToFill() }
-                        placeholder: { EmptyView() }
+                    RemoteImage(url: game.wide ?? game.icon, fill: true)
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             Text(game.name).font(.builder(16, .bold)).lineLimit(1).padding(.top, 6)
@@ -246,5 +243,46 @@ struct CountBubble: View {
                 .padding(.horizontal, size * 0.28).frame(minWidth: size, minHeight: size)
                 .background(Color.bloxBlue, in: Capsule())
         }
+    }
+}
+
+struct RemoteImage: View {
+    let url: String?
+    let fill: Bool
+    var body: some View {
+        AsyncImage(url: url.flatMap(URL.init(string:)), transaction: Transaction(animation: .easeOut(duration: 0.2))) { phase in
+            if let image = phase.image {
+                image.resizable().aspectRatio(contentMode: fill ? .fill : .fit).transition(.opacity)
+            } else if url != nil, phase.error == nil {
+                Shimmer()
+            }
+        }
+    }
+}
+
+struct Shimmer: View {
+    static let animated = !ProcessInfo.processInfo.arguments.contains("-uitest")
+    @State private var moved = false
+
+    var body: some View {
+        GeometryReader { g in
+            LinearGradient(colors: [.clear, Color.white.opacity(0.09), .clear], startPoint: .leading, endPoint: .trailing)
+                .frame(width: g.size.width * 0.7)
+                .offset(x: moved ? g.size.width : -g.size.width * 0.7)
+        }
+        .clipped()
+        .onAppear {
+            guard Self.animated else { return }
+            withAnimation(.linear(duration: 1.1).repeatForever(autoreverses: false)) { moved = true }
+        }
+    }
+}
+
+struct PressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .opacity(configuration.isPressed ? 0.8 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }

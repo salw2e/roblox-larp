@@ -31,6 +31,7 @@ targets:
         UILaunchScreen: { UIColorName: LaunchBackground }
         UIAppFonts: [BuilderSans-Regular.otf, BuilderSans-Medium.otf, BuilderSans-Bold.otf, BuilderSans-ExtraBold.otf, BuilderIcons-Regular.ttf, BuilderIcons-Filled.ttf]
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        CADisableMinimumFrameDurationOnPhone: true
         ITSAppUsesNonExemptEncryption: false
   BloxUITests:
     type: bundle.ui-testing

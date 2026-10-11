@@ -13,28 +13,38 @@ struct RootView: View {
     @State private var tab = MainTab.home
     @State private var menu = false
     @State private var page: Page?
+    @GestureState private var menuPull: CGFloat = 0
 
     var body: some View {
         ZStack(alignment: .leading) {
             VStack(spacing: 0) {
-                Group {
-                    switch tab {
-                    case .home: HomeView(openMenu: openMenu, open: { page = $0 })
-                    case .moments: MomentsView()
-                    case .chat: ChatView()
-                    case .me: AppearanceView(openMenu: openMenu, openProfile: { page = .profile })
-                    }
+                ZStack {
+                    kept(.home) { HomeView(openMenu: openMenu, open: { page = $0 }) }
+                    kept(.moments) { MomentsView() }
+                    kept(.chat) { ChatView() }
+                    kept(.me) { AppearanceView(openMenu: openMenu, openProfile: { page = .profile }) }
                 }
                 .frame(maxHeight: .infinity)
                 bar
             }
             if menu {
-                Color.black.opacity(0.55).ignoresSafeArea().onTapGesture { withAnimation(.easeOut(duration: 0.2)) { menu = false } }
+                Color.black.opacity(0.55).ignoresSafeArea().onTapGesture(perform: closeMenu)
+                    .transition(.opacity)
                     .accessibilityIdentifier("menuShade")
                 MenuView { p in
-                    withAnimation(.easeOut(duration: 0.2)) { menu = false }
+                    closeMenu()
                     page = p
                 }
+                .offset(x: min(menuPull, 0))
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 12)
+                        .updating($menuPull) { g, pull, _ in
+                            pull = abs(g.translation.width) > abs(g.translation.height) ? g.translation.width : 0
+                        }
+                        .onEnded { g in
+                            if abs(g.translation.width) > abs(g.translation.height), g.predictedEndTranslation.width < -90 { closeMenu() }
+                        }
+                )
                 .transition(.move(edge: .leading))
             }
         }
@@ -52,7 +62,15 @@ struct RootView: View {
         }
     }
 
-    private func openMenu() { withAnimation(.easeOut(duration: 0.22)) { menu = true } }
+    private func openMenu() { withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) { menu = true } }
+    private func closeMenu() { withAnimation(.spring(response: 0.3, dampingFraction: 0.92)) { menu = false } }
+
+    private func kept<V: View>(_ t: MainTab, @ViewBuilder _ content: () -> V) -> some View {
+        content()
+            .opacity(tab == t ? 1 : 0)
+            .allowsHitTesting(tab == t)
+            .accessibilityHidden(tab != t)
+    }
 
     private var bar: some View {
         HStack {
@@ -340,6 +358,7 @@ struct MenuView: View {
             .frame(height: 44)
             .contentShape(Rectangle())
         }
+        .buttonStyle(PressStyle())
         .accessibilityIdentifier("menu-\(title)")
     }
 }

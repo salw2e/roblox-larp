@@ -17,6 +17,9 @@ struct AppearanceView: View {
     @State private var shown: Item?
     @State private var pricing: Item?
     @State private var priceText = ""
+    @State private var raised = false
+    @GestureState private var pull: CGFloat = 0
+    private let restTop: CGFloat = 324, raisedTop: CGFloat = 64
 
     private static let categories = ["All": "", "Avatars": "avatar", "Backgrounds": "background", "Body": "body", "Clothing": "shirt"]
     private let order = ["All", "Avatars", "Backgrounds", "Body", "Clothing"]
@@ -24,9 +27,12 @@ struct AppearanceView: View {
                         GridItem(.flexible(), alignment: .top)]
 
     var body: some View {
-        VStack(spacing: 0) {
-            stage
-            sheet
+        GeometryReader { geo in
+            let top = min(max((raised ? raisedTop : restTop) + pull, raisedTop), restTop)
+            ZStack(alignment: .top) {
+                stage
+                sheet.frame(height: max(geo.size.height - top, 0)).offset(y: top)
+            }
         }
         .background(Color.bg)
         .task { if results.isEmpty { await load() } }
@@ -112,6 +118,10 @@ struct AppearanceView: View {
     private var sheet: some View {
         VStack(spacing: 0) {
             Capsule().fill(Color(white: 0.35)).frame(width: 40, height: 4).padding(.vertical, 10)
+                .frame(maxWidth: .infinity).contentShape(Rectangle())
+                .gesture(sheetDrag)
+                .onTapGesture { withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) { raised.toggle() } }
+                .accessibilityIdentifier("sheetHandle")
             if searching && !customize { searchBar }
             if !customize { categoryTabs }
             ScrollView {
@@ -119,7 +129,17 @@ struct AppearanceView: View {
             }
         }
         .background(Color.bg, in: UnevenRoundedRectangle(topLeadingRadius: 16, topTrailingRadius: 16))
-        .padding(.top, -16)
+    }
+
+    private var sheetDrag: some Gesture {
+        DragGesture(minimumDistance: 4, coordinateSpace: .global)
+            .updating($pull) { g, pull, _ in pull = g.translation.height }
+            .onEnded { g in
+                let goingUp = g.predictedEndTranslation.height < -60, goingDown = g.predictedEndTranslation.height > 60
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+                    raised = goingUp ? true : goingDown ? false : raised
+                }
+            }
     }
 
     private var categoryTabs: some View {
@@ -178,7 +198,7 @@ struct AppearanceView: View {
             }
         }
         .padding(.horizontal, 16).padding(.bottom, 30)
-        .buttonStyle(.plain)
+        .buttonStyle(PressStyle())
     }
 
     private func exploreStyles(_ styles: [Item]) -> some View {
@@ -218,7 +238,7 @@ struct AppearanceView: View {
             }
         }
         .padding(.horizontal, 16).padding(.bottom, 30)
-        .buttonStyle(.plain)
+        .buttonStyle(PressStyle())
     }
 
     private func tile(_ item: Item, showCreator: Bool) -> some View {
