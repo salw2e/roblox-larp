@@ -72,7 +72,7 @@ struct AppearanceView: View {
             BackdropPicture().ignoresSafeArea(edges: .top)
             AvatarStage().padding(.top, 50).padding(.bottom, 22)
             topControls
-            if store.profile.needsRedraw || store.drawing || !store.drawNote.isEmpty { redrawControl }
+            if store.drawing || !store.drawNote.isEmpty { drawingStatus }
             HStack(spacing: 22) {
                 Button { store.undo() } label: { Icon("arrow-curl-to-left", size: 20) }
                     .disabled(store.undone.isEmpty).foregroundStyle(store.undone.isEmpty ? Color(white: 0.38) : Color.ink)
@@ -89,18 +89,11 @@ struct AppearanceView: View {
         .frame(height: 332)
     }
 
-    private var redrawControl: some View {
+    private var drawingStatus: some View {
         VStack(alignment: .trailing, spacing: 6) {
-            if store.profile.needsRedraw || store.drawing {
-                Button { Task { await store.redraw() } } label: {
-                    HStack(spacing: 8) {
-                        if store.drawing { ProgressView().tint(Color.ink) } else { Icon("arrow-spin-clockwise", size: 18) }
-                        Text(store.drawing ? "Drawing…" : "Update avatar").font(.builder(14.5, .medium))
-                    }
-                    .padding(.horizontal, 14).frame(height: 44).background(Color.pill, in: Capsule())
-                }
-                .disabled(store.drawing)
-                .accessibilityIdentifier("updateAvatar")
+            if store.drawing {
+                ProgressView().tint(Color.ink).frame(width: 36, height: 36).background(Color.pill, in: Circle())
+                    .accessibilityIdentifier("drawingNow").accessibilityLabel("Updating your avatar")
             }
             if !store.drawNote.isEmpty {
                 Text(store.drawNote).font(.builder(12)).multilineTextAlignment(.trailing).frame(maxWidth: 200, alignment: .trailing)

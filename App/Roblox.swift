@@ -44,6 +44,13 @@ enum Roblox {
 
     static let service = Bundle.main.object(forInfoDictionaryKey: "BloxAPI") as? String ?? ""
 
+    static func budget() async -> (left: Int?, resetIn: Int)? {
+        guard let url = URL(string: service + "/budget"), let (data, reply) = try? await URLSession.shared.data(from: url),
+              (reply as? HTTPURLResponse)?.statusCode == 200,
+              let d = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
+        return (d["left"] as? Int, d["resetIn"] as? Int ?? 0)
+    }
+
     static func look(_ body: Data) async throws -> Look {
         guard let url = URL(string: service + "/look") else { throw BloxError.said("The avatar service isn't set up in this build.") }
         var r = URLRequest(url: url, timeoutInterval: 90)

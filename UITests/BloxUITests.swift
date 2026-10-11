@@ -6,6 +6,7 @@ final class BloxUITests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
         app.launchArguments = ["-uitest", "-photograph-avatar"]
+        if ProcessInfo.processInfo.environment["BLOX_TEST_REDRAW"] == "1" { app.launchArguments.append("-autodraw") }
     }
 
     func testEveryScreen() throws {
@@ -320,21 +321,17 @@ final class BloxUITests: XCTestCase {
     }
 
     private func redraw() throws {
-        let update = app.buttons["updateAvatar"]
-        XCTAssertTrue(update.waitForExistence(timeout: 5), "worn items changed, so the button is offered")
-        update.tap()
-        let note = app.staticTexts["drawNote"]
-        var done = false
-        for _ in 0..<60 where !done {
-            sleep(2)
-            done = note.exists || !update.exists
-        }
-        XCTAssertTrue(done, "Update avatar finished")
+        let busy = any("drawingNow"), note = app.staticTexts["drawNote"]
+        var started = false
+        for _ in 0..<15 where !started { sleep(1); started = busy.exists || note.exists }
+        XCTAssertTrue(started, "a change draws the avatar without a button")
         shot("16b update avatar")
+        XCTAssertTrue(busy.waitForNonExistence(timeout: 120), "the drawing finished")
         if note.exists {
-            XCTAssertTrue(note.label.contains("hour") || note.label.contains("minute"), "a rationing note, not a failure: \(note.label)")
+            XCTAssertTrue(note.label.contains("min"), "a rationing note, not a failure: \(note.label)")
+        } else {
+            XCTAssertTrue(any("avatar3D").exists)
         }
-        if !update.exists { XCTAssertTrue(any("avatar3D").exists) }
     }
 
     private func back() { app.navigationBars.buttons.element(boundBy: 0).tap() }

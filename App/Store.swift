@@ -79,6 +79,7 @@ final class Store: ObservableObject {
         if worn != before {
             undone.append(before)
             redone = []
+            drawSoon()
         }
     }
 
@@ -86,12 +87,14 @@ final class Store: ObservableObject {
         guard let keys = undone.popLast() else { return }
         redone.append(worn)
         setWorn(keys)
+        drawSoon()
     }
 
     func redo() {
         guard let keys = redone.popLast() else { return }
         undone.append(worn)
         setWorn(keys)
+        drawSoon()
     }
 
     func wear(outfit: Outfit) {
@@ -100,6 +103,32 @@ final class Store: ObservableObject {
         if worn != before {
             undone.append(before)
             redone = []
+            drawSoon()
+        }
+    }
+
+    // MARK: Drawing on its own
+
+    private var autoDraw: Task<Void, Never>?
+    private static let drawsOnItsOwn = !ProcessInfo.processInfo.arguments.contains("-uitest")
+        || ProcessInfo.processInfo.arguments.contains("-autodraw")
+
+    private func drawSoon(after seconds: Double = 1.5, tries: Int = 0) {
+        guard Self.drawsOnItsOwn else { return }
+        autoDraw?.cancel()
+        autoDraw = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard let self, !Task.isCancelled, self.profile.needsRedraw, self.modelVersion > 0 else { return }
+            if self.drawing { return self.drawSoon(after: 2, tries: tries) }
+            if let b = await Roblox.budget(), let left = b.left, left < 2, b.resetIn > 0 {
+                guard !Task.isCancelled else { return }
+                self.drawNote = "Your avatar updates in \(max(1, (b.resetIn + 59) / 60)) min"
+                return self.drawSoon(after: Double(b.resetIn) + 3, tries: tries)
+            }
+            guard !Task.isCancelled else { return }
+            let drew = await self.redraw()
+            if !drew, tries < 4 { self.drawSoon(after: 60, tries: tries + 1) }        // busy or offline: try again
+            else if drew, self.profile.needsRedraw { self.drawSoon() }                // changed again while drawing
         }
     }
 
@@ -180,21 +209,23 @@ final class Store: ObservableObject {
         redone = []
     }
 
-    func redraw() async {
-        guard !drawing else { return }
+    @discardableResult
+    func redraw() async -> Bool {
+        guard !drawing else { return false }
         drawing = true
         drawNote = ""
+        defer { drawing = false }
         let wear = profile.wearing, asked = wearSignature(profile.items)
         do {
             let look = try await Roblox.look(lookRequest(definition: profile.definition, wear: wear))
             try await install(look)
             profile.definition = look.definition
             profile.drawn = asked
-            note(look.drawingsLeft.map { "\($0) more this hour" } ?? "")
+            return true
         } catch {
             note(error.localizedDescription)
+            return false
         }
-        drawing = false
     }
 
     private func note(_ text: String) {
