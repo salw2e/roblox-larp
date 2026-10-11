@@ -7,6 +7,7 @@ struct ProfileView: View {
     @Binding var atTop: Bool
     var pulling = false
     var close: () -> Void = {}
+    var open: (Page) -> Void = { _ in }
     var editAppearance: () -> Void = {}
     @State private var editing = false
 
@@ -23,7 +24,7 @@ struct ProfileView: View {
                 buttons.padding(.top, 25)
                 wearing.padding(.top, 28)
                 if !store.profile.games.isEmpty { games.padding(.top, 28) }
-                NavigationLink { FullProfileView() } label: {
+                Button { open(.fullProfile) } label: {
                     Text("View full profile").font(.builder(14.5, .medium)).frame(maxWidth: .infinity, minHeight: 40)
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.ink, lineWidth: 1))
                 }
@@ -53,7 +54,6 @@ struct ProfileView: View {
                 .padding(.leading, 20).padding(.top, 8)
             }
         }
-        .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $editing) { EditProfileView() }
     }
 
@@ -125,7 +125,10 @@ struct ProfileView: View {
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 12) {
-                    ForEach(store.profile.wearing) { ItemCard(item: $0).frame(width: 116).accessibilityIdentifier("wornItem") }
+                    ForEach(store.profile.wearing) { item in
+                        Button { open(.item(item)) } label: { ItemCard(item: item).frame(width: 116) }
+                            .buttonStyle(PressStyle()).accessibilityIdentifier("wornItem")
+                    }
                 }
             }
             .padding(.horizontal, -24).contentMargins(.horizontal, 24)
@@ -136,7 +139,10 @@ struct ProfileView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Experiences").font(.builder(20, .bold)).frame(height: 24)
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .top), GridItem(.flexible(), alignment: .top)], spacing: 17) {
-                ForEach(store.profile.games) { WideGameCard(game: $0).accessibilityIdentifier("profileGame") }
+                ForEach(store.profile.games) { g in
+                    Button { open(.game(g)) } label: { WideGameCard(game: g) }
+                        .buttonStyle(PressStyle()).accessibilityIdentifier("profileGame")
+                }
             }
         }
     }
@@ -149,61 +155,114 @@ struct ScrollTop: PreferenceKey {
 
 struct FullProfileView: View {
     @EnvironmentObject var store: Store
-    private let grid = [GridItem(.adaptive(minimum: 104), spacing: 12, alignment: .top)]
+    var open: (Page) -> Void = { _ in }
+    var editAvatar: () -> Void = {}
+    @State private var editing = false
 
     var body: some View {
         let p = store.profile
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                HStack(spacing: 16) {
-                    Headshot(image: store.avatar, crop: p.crop, size: 96)
+            VStack(alignment: .leading, spacing: 0) {
+                ZStack(alignment: .topTrailing) {
+                    RoundedRectangle(cornerRadius: 8).fill(Color.rgb(25, 26, 30))
+                    AvatarStage().padding(.vertical, 10)
+                    Text("3D").font(.builder(14.5, .bold)).frame(width: 44, height: 48)
+                        .background(Color.tile, in: RoundedRectangle(cornerRadius: 8)).padding(12)
+                }
+                .frame(height: 300)
+                HStack(alignment: .top, spacing: 13) {
+                    Headshot(image: store.avatar, crop: p.crop, size: 88)
+                        .overlay(alignment: .bottomTrailing) {
+                            Circle().fill(Color.bg).frame(width: 20, height: 20).overlay(Circle().fill(Color.bloxBlue).frame(width: 14, height: 14)).offset(x: -4, y: -4)
+                        }
                     VStack(alignment: .leading, spacing: 4) {
-                        NameLine(profile: p, font: 24)
-                        Text("@\(p.username)").foregroundStyle(Color.faint)
+                        NameLine(profile: p, font: 26)
+                        Text("@\(p.username)").font(.builder(12)).foregroundStyle(Color.faint)
+                    }
+                    .padding(.top, 34)
+                }
+                .padding(.top, -20)
+                HStack(spacing: 8) {
+                    chip("\(short(p.friends)) Friends")
+                    chip("\(short(p.followers)) Followers")
+                    chip("\(short(p.following)) Following")
+                }
+                .padding(.top, 17)
+                if !p.bio.isEmpty {
+                    Text(p.bio).font(.builder(14.5)).foregroundStyle(Color.faint).lineLimit(2).padding(.top, 18)
+                }
+                HStack(spacing: 8) {
+                    button("Edit avatar", action: editAvatar).accessibilityIdentifier("fullEditAvatar")
+                    button("Edit profile") { editing = true }
+                    Icon("three-dots-horizontal", size: 20).frame(width: 40, height: 40).background(Color.tile, in: RoundedRectangle(cornerRadius: 8))
+                }
+                .padding(.top, 24)
+                section("Currently Wearing") {
+                    row { ForEach(p.wearing) { item in Button { open(.item(item)) } label: { ItemCard(item: item).frame(width: 108) } } }
+                }
+                if !p.games.isEmpty {
+                    section("Experiences") {
+                        row { ForEach(p.games) { g in Button { open(.game(g)) } label: { WideGameCard(game: g).frame(width: 170) } } }
+                    }
+                    section("Favorites", page: .favorites) {
+                        row { ForEach(p.games) { g in Button { open(.game(g)) } label: { GameCard(game: g).frame(width: 108) } } }
                     }
                 }
-                HStack {
-                    stat(p.friends, "Friends")
-                    stat(p.followers, "Followers")
-                    stat(p.following, "Following")
+                if !p.friendList.isEmpty {
+                    section("Friends (\(grouped(p.friends)))", page: .friends) {
+                        row {
+                            ForEach(p.friendList) { f in
+                                VStack(spacing: 6) {
+                                    RemoteCircle(url: f.headshot, size: 84)
+                                    Text(f.displayName).font(.builder(12)).lineLimit(1)
+                                }
+                                .frame(width: 88)
+                            }
+                        }
+                    }
                 }
-                if !p.bio.isEmpty { section("About") { Text(p.bio).font(.builder(18)) } }
-                section("Currently Wearing") { itemGrid(p.wearing) }
-                section("Inventory") { itemGrid(p.items) }
-                if !p.games.isEmpty {
-                    section("Favorites") {
-                        LazyVGrid(columns: grid, spacing: 18) { ForEach(p.games) { GameCard(game: $0) } }
+                if !p.items.isEmpty {
+                    section("Collections", page: .inventory) {
+                        row { ForEach(p.items) { item in Button { open(.item(item)) } label: { ItemCard(item: item).frame(width: 108) } } }
                     }
                 }
             }
-            .padding(22)
+            .padding(.horizontal, 15).padding(.top, 16).padding(.bottom, 30)
+            .buttonStyle(PressStyle())
         }
-        .background(Color.bg)
-        .navigationTitle("Profile")
-        .navigationBarTitleDisplayMode(.inline)
+        .page("Profile")
+        .sheet(isPresented: $editing) { EditProfileView() }
     }
 
-    private func stat(_ n: Int, _ label: String) -> some View {
-        VStack(spacing: 2) {
-            Text(short(n)).font(.builder(22, .bold))
-            Text(label).font(.builder(15)).foregroundStyle(Color.faint)
-        }
-        .frame(maxWidth: .infinity)
+    private func chip(_ text: String) -> some View {
+        Text(text).font(.builder(14.5)).lineLimit(1).padding(.horizontal, 12).frame(height: 31).background(Color.tile, in: Capsule())
     }
 
-    private func section<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(title).font(.builder(24, .bold))
+    private func button(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).font(.builder(14.5, .bold)).frame(maxWidth: .infinity, minHeight: 40)
+                .background(Color.tile, in: RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    private func section<C: View>(_ title: String, page: Page? = nil, @ViewBuilder _ content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button { if let page { open(page) } } label: {
+                HStack(spacing: 6) {
+                    Text(title).font(.builder(19, .bold))
+                    if page != nil { Icon("chevron-large-right", size: 16) }
+                }
+            }
+            .disabled(page == nil)
             content()
         }
+        .padding(.leading, 16).padding(.top, 34)
     }
 
-    @ViewBuilder
-    private func itemGrid(_ items: [Item]) -> some View {
-        if items.isEmpty {
-            Text("Nothing here yet.").foregroundStyle(Color.faint)
-        } else {
-            LazyVGrid(columns: grid, spacing: 18) { ForEach(items) { ItemCard(item: $0) } }
+    private func row<C: View>(@ViewBuilder _ content: () -> C) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: 12) { content() }
         }
+        .padding(.leading, -31).padding(.trailing, -15).contentMargins(.leading, 31).contentMargins(.trailing, 15)
     }
 }

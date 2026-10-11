@@ -93,7 +93,7 @@ final class ParseTests: XCTestCase {
         XCTAssertEqual(Parse.wearing(try fixture("wearing")), [1080951, 1142116])
         let limited = try XCTUnwrap(Parse.asset(try fixture("economy-limited")))
         XCTAssertEqual(limited.name, "Fiery Horns of the Netherworld")
-        XCTAssertEqual(limited.price, 3000)
+        XCTAssertGreaterThan(limited.price ?? 0, 1_000_000)
         XCTAssertEqual(limited.creator, "Roblox")
         let hat = try XCTUnwrap(Parse.asset(try fixture("economy-1080951")))
         XCTAssertEqual(hat.name, "Builders Club Hard Hat")
@@ -248,5 +248,95 @@ final class MeshTests: XCTestCase {
         XCTAssertEqual(mats["A"], MeshMaterial(texture: nil, colour: [0.2, 0.4, 0.6]))
         XCTAssertEqual(mats["B two"], MeshMaterial(texture: "tex1.png", colour: [1, 1, 1]))
         XCTAssertEqual(parseMtl("Kd 1 0 0").count, 0)
+    }
+}
+
+final class ExtrasTests: XCTestCase {
+    func testBuying() {
+        var p = Profile()
+        p.robux = 1000
+        let hat = Item(id: 1, name: "Hat", price: 300)
+        XCTAssertEqual(p.buy(hat), .bought)
+        XCTAssertEqual(p.robux, 700)
+        XCTAssertEqual(p.ledger["Purchases"], 300)
+        XCTAssertEqual(p.wearing.map(\.id), [1])
+        XCTAssertEqual(p.buy(hat), .alreadyOwned)                       // not charged twice
+        XCTAssertEqual(p.robux, 700)
+        XCTAssertEqual(p.buy(Item(id: 2, name: "Dominus", price: 701)), .tooExpensive)
+        XCTAssertEqual(p.buy(Item(id: 3, name: "Gone", price: nil)), .offSale)
+        XCTAssertEqual(p.robux, 700)
+        XCTAssertEqual(p.items.count, 1)                                // neither refusal added anything
+        XCTAssertEqual(p.buy(Item(id: 4, name: "Exact", price: 700)), .bought)
+        XCTAssertEqual(p.robux, 0)
+        XCTAssertEqual(p.buy(Item(id: 5, name: "Free", price: 0)), .bought)
+        XCTAssertEqual(p.ledger["Purchases"], 1000)                     // a free item adds nothing
+        XCTAssertEqual(p.total(Ledger.outgoing), 1000)
+    }
+
+    func testTopUpAndTotals() {
+        var p = Profile()
+        p.topUp(4500)
+        p.topUp(-5)
+        p.ledger["Sales of Goods"] = 100
+        p.ledger[Ledger.pending] = 999
+        XCTAssertEqual(p.robux, 4500)
+        XCTAssertEqual(p.total(Ledger.incoming), 4600)
+        XCTAssertEqual(p.total(Ledger.outgoing), 0)
+    }
+
+    func testTrades() {
+        var p = Profile()
+        p.robux = 50
+        let mine = Item(id: 1, name: "Mine", price: 1000), keep = Item(id: 2, name: "Keep", price: 5), theirs = Item(id: 9, name: "Theirs", price: 4000, wearing: true)
+        p.wear(mine)
+        p.wear(keep)
+        var t = Trade(id: p.nextId, partner: Friend(id: 7, name: "x", displayName: "X"))
+        t.giving = [mine]
+        t.receiving = [theirs]
+        t.giveRobux = 40
+        t.getRobux = 10
+        XCTAssertEqual(t.giveValue, 1040)
+        XCTAssertEqual(t.getValue, 4010)
+        t.status = .outbound
+        p.trades = [t]
+        XCTAssertFalse(p.accept(trade: t.id))
+        p.trades[0].status = .inbound
+        p.trades[0].giveRobux = 500
+        XCTAssertFalse(p.accept(trade: t.id))
+        XCTAssertEqual(p.items.count, 2)
+        p.trades[0].giveRobux = 40
+        XCTAssertTrue(p.accept(trade: t.id))
+        XCTAssertEqual(p.robux, 20)
+        XCTAssertEqual(p.items.map(\.id), [2, 9])
+        XCTAssertEqual(p.items.last?.wearing, false)                     // a traded item arrives unworn
+        XCTAssertEqual(p.trades[0].status, .completed)
+        XCTAssertFalse(p.accept(trade: t.id))                            // and not twice
+        XCTAssertEqual(p.nextId, 2)
+    }
+
+    func testChat() {
+        var p = Profile()
+        p.say("  hi  ", to: 7, mine: true)
+        p.say("   ", to: 7, mine: true)
+        p.say("yo", to: 7, mine: false)
+        XCTAssertEqual(p.chat(with: 7), [ChatLine(mine: true, text: "hi"), ChatLine(mine: false, text: "yo")])
+        XCTAssertEqual(p.chat(with: 8), [])
+        XCTAssertEqual(Profile.load(try! JSONEncoder().encode(p))?.chat(with: 7).count, 2)   // survives a save
+    }
+
+    func testGameAndItemInfo() throws {
+        let g = try XCTUnwrap(Parse.gameInfo(try fixture("game-details")))
+        XCTAssertEqual(g.creator, "Uplift Games")
+        XCTAssertEqual(g.created, "7/14/2017")
+        XCTAssertGreaterThan(g.visits, 40_000_000_000)                   // needs 64-bit numbers
+        XCTAssertGreaterThan(g.favorites, 1_000_000)
+        XCTAssertEqual(g.maxPlayers, 35)
+        XCTAssertTrue(g.description.contains("Adopt"))
+        XCTAssertNil(Parse.gameInfo(Data(#"{"data":[]}"#.utf8)))
+        let horns = try XCTUnwrap(Parse.itemInfo(try fixture("economy-limited")))
+        XCTAssertEqual(horns.type, "Hat")
+        XCTAssertTrue(horns.limited)
+        XCTAssertEqual(horns.created, "2/13/2015")
+        XCTAssertFalse(try XCTUnwrap(Parse.itemInfo(try fixture("economy-1080951"))).limited)
     }
 }

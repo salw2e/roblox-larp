@@ -5,7 +5,7 @@ struct AppearanceView: View {
     @EnvironmentObject var store: Store
     @Environment(\.dismiss) private var dismiss
     var openMenu: (() -> Void)?
-    var openProfile: (() -> Void)?
+    var open: (Page) -> Void = { _ in }
 
     @State private var customize = false
     @State private var searching = false
@@ -14,7 +14,6 @@ struct AppearanceView: View {
     @State private var results: [Item] = []
     @State private var loading = false
     @State private var failure: String?
-    @State private var shown: Item?
     @State private var pricing: Item?
     @State private var priceText = ""
     @State private var raised = false
@@ -36,7 +35,6 @@ struct AppearanceView: View {
         }
         .background(Color.bg)
         .task { if results.isEmpty { await load() } }
-        .sheet(item: $shown) { ItemSheet(item: $0) }
         .alert("Price", isPresented: Binding(get: { pricing != nil }, set: { if !$0 { pricing = nil } })) {
             TextField("0 is Free, empty is Off Sale", text: $priceText).keyboardType(.numberPad)
             Button("Save") { savePrice() }
@@ -108,7 +106,7 @@ struct AppearanceView: View {
             .padding(.trailing, 3)
             HStack(alignment: .top) {
                 VStack(spacing: 13) {
-                    Button { openProfile?() } label: { Headshot(image: store.avatar, crop: store.profile.crop, size: 36) }
+                    Button { open(.profile) } label: { Headshot(image: store.avatar, crop: store.profile.crop, size: 36) }
                         .accessibilityIdentifier("pillHeadshot")
                     Icon("person-standing-gear", size: 24).frame(height: 24)
                 }
@@ -247,7 +245,7 @@ struct AppearanceView: View {
     }
 
     private func catalogTile(_ item: Item) -> some View {
-        Button { shown = item } label: { tile(item, showCreator: true) }
+        Button { open(.item(item)) } label: { tile(item, showCreator: true) }
             .accessibilityIdentifier("catalogItem")
     }
 
@@ -299,39 +297,5 @@ struct AppearanceView: View {
         let t = priceText.trimmingCharacters(in: .whitespaces)
         store.profile.items[i].price = t.isEmpty ? nil : number(from: t)
         pricing = nil
-    }
-}
-
-struct ItemSheet: View {
-    @EnvironmentObject var store: Store
-    @Environment(\.dismiss) private var dismiss
-    let item: Item
-
-    var body: some View {
-        let worn = store.profile.owns(item)?.wearing ?? false
-        VStack(alignment: .leading, spacing: 12) {
-            Thumb(url: item.thumb).frame(maxWidth: 260).frame(maxWidth: .infinity)
-            Text(item.name).font(.builder(24, .bold))
-            HStack(spacing: 6) {
-                Text("By \(item.creator)").foregroundStyle(Color.faint)
-                if item.showsCreatorCheck { VerifiedBadge(size: 16) }
-            }
-            .font(.builder(17))
-            PriceLine(price: item.price, size: 19)
-            Button {
-                store.profile.wear(item, !worn)
-                dismiss()
-            } label: {
-                Text(worn ? "Take off" : "Wear").font(.builder(18, .semibold))
-                    .frame(maxWidth: .infinity, minHeight: 50)
-                    .background(worn ? Color.field : Color.bloxBlue, in: RoundedRectangle(cornerRadius: 10))
-                    .foregroundStyle(.white)
-            }
-            .accessibilityIdentifier("wearButton")
-            .padding(.top, 8)
-        }
-        .padding(24)
-        .presentationDetents([.medium, .large])
-        .presentationBackground(Color.bg)
     }
 }

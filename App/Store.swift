@@ -81,9 +81,8 @@ final class Store: ObservableObject {
     }
 
     func addFriend(_ username: String) async throws {
-        let user = try await Roblox.user(username)
-        let face = try? await Roblox.headshot(user.id)
-        if let i = profile.friendList.firstIndex(where: { $0.id == user.id }) { profile.friendList[i].headshot = face; return }
-        profile.friendList.append(Friend(id: user.id, name: user.name, displayName: user.displayName, headshot: face))
+        let person = try await Roblox.person(username)
+        if let i = profile.friendList.firstIndex(where: { $0.id == person.id }) { profile.friendList[i].headshot = person.headshot; return }
+        profile.friendList.append(person)
     }
 }

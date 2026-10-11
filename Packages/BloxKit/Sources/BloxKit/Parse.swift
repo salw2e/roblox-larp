@@ -28,9 +28,11 @@ public enum Parse {
 
     public static func asset(_ data: Data) -> Item? {
         struct C: Decodable { let Name: String? }
-        struct R: Decodable { let AssetId: Int64; let Name: String; let PriceInRobux: Int?; let Creator: C? }
+        struct L: Decodable { let CollectibleLowestResalePrice: Int? }
+        struct R: Decodable { let AssetId: Int64; let Name: String; let PriceInRobux: Int?; let Creator: C?; let IsLimited: Bool?; let IsLimitedUnique: Bool?; let CollectiblesItemDetails: L? }
         guard let r = try? JSONDecoder().decode(R.self, from: data) else { return nil }
-        return Item(id: r.AssetId, name: r.Name, creator: r.Creator?.Name ?? "Roblox", price: r.PriceInRobux)
+        let resale = (r.IsLimited ?? false) || (r.IsLimitedUnique ?? false) ? r.CollectiblesItemDetails?.CollectibleLowestResalePrice : nil
+        return Item(id: r.AssetId, name: r.Name, creator: r.Creator?.Name ?? "Roblox", price: resale ?? r.PriceInRobux)
     }
 
     public static func catalog(_ data: Data) -> [Item] {

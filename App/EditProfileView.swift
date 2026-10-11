@@ -232,11 +232,18 @@ struct EditProfileView: View {
 
     private var gamesLink: some View {
         VStack(alignment: .leading, spacing: 10) {
-            heading("Games")
+            heading("More to set up")
             NavigationLink { GamesView() } label: {
                 grayButton("Games on your profile (\(store.profile.games.count))")
             }
             .accessibilityIdentifier("manageGames")
+            NavigationLink { LedgerEditor() } label: { grayButton("Robux & transactions") }
+                .accessibilityIdentifier("manageLedger")
+            NavigationLink { NoticesEditor() } label: { grayButton("Notifications (\(store.profile.notices.count))") }
+                .accessibilityIdentifier("manageNotices")
+            NavigationLink { TradesEditor() } label: { grayButton("Trades (\(store.profile.trades.count))") }
+                .accessibilityIdentifier("manageTrades")
+            caption("Chats are written in the Chat tab itself: open a friend and type. The left button sends as them.")
         }
         .padding(.top, 8)
     }

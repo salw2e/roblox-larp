@@ -109,6 +109,21 @@ enum Roblox {
         return items.map { var i = $0; i.thumb = (i.bundle ? b : a)[i.id] ?? i.thumb; return i }
     }
 
+    static func person(_ username: String) async throws -> Friend {
+        let u = try await user(username)
+        return Friend(id: u.id, name: u.name, displayName: u.displayName, headshot: try? await headshot(u.id))
+    }
+
+    static func itemInfo(_ item: Item) async -> ItemInfo? {
+        guard !item.bundle, let data = try? await fetch(URL(string: "https://economy.roblox.com/v2/assets/\(item.id)/details")!) else { return nil }
+        return Parse.itemInfo(data)
+    }
+
+    static func gameInfo(_ universe: Int64) async -> GameInfo? {
+        guard let data = try? await fetch(url("https://games.roblox.com/v1/games", ["universeIds": "\(universe)"])) else { return nil }
+        return Parse.gameInfo(data)
+    }
+
     static func headshot(_ userId: Int64) async throws -> String? {
         Parse.images(try await fetch(url("https://thumbnails.roblox.com/v1/users/avatar-headshot",
                                          ["userIds": "\(userId)", "size": "150x150", "format": "Png"])))[userId]

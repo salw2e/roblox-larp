@@ -73,6 +73,10 @@ public struct Profile: Codable, Hashable, Sendable {
     public var notifications = 0     // the bell
     public var messages = 0          // Messages in the menu
     public var friendsBadge = 0      // Friends in the menu
+    public var ledger: [String: Int] = [:]
+    public var trades: [Trade] = []
+    public var notices: [Notice] = []
+    public var chats: [String: [ChatLine]] = [:]    // by friend id
     public var definition: String?
     public var drawn: String?
 
