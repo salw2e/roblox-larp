@@ -61,7 +61,7 @@ jobs:
           git checkout -- project.yml && xcodegen generate
           xcodebuild -project Blox.xcodeproj -scheme Blox -configuration Release \
             -destination 'generic/platform=iOS' -archivePath build/Blox.xcarchive \
-            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            CURRENT_PROJECT_VERSION=$((${{ github.run_number }} + 100)) \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" archive 2>&1 | tee build-log.txt | grep -E "error:|warning: .*Swift|ARCHIVE" || true
           test -d build/Blox.xcarchive/Products/Applications/Blox.app
           test -f build/Blox.xcarchive/Products/Applications/Blox.app/Info.plist
