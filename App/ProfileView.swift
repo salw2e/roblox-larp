@@ -97,8 +97,8 @@ struct ProfileView: View {
         let p = store.profile
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                chip("\(short(p.friends)) Friends", dim: false, id: "friendsChip")
-                chip("\(short(p.followers)) Followers", dim: false, id: "followersChip")
+                chip("\(short(p.friends)) Friends", dim: p.friends == 0, id: "friendsChip")     // any count at 0 is greyed
+                chip("\(short(p.followers)) Followers", dim: p.followers == 0, id: "followersChip")
                 chip("\(short(p.following)) Following", dim: p.following == 0, id: "followingChip")
             }
         }
@@ -242,9 +242,9 @@ struct FullProfileView: View {
                 .padding(.top, -20)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        chip("\(short(p.friends)) Friends")
-                        chip("\(short(p.followers)) Followers")
-                        chip("\(short(p.following)) Following")
+                        chip("\(short(p.friends)) Friends", dim: p.friends == 0)
+                        chip("\(short(p.followers)) Followers", dim: p.followers == 0)
+                        chip("\(short(p.following)) Following", dim: p.following == 0)
                     }
                 }
                 .padding(.horizontal, -15).contentMargins(.horizontal, 15)
@@ -328,7 +328,7 @@ struct FullProfileView: View {
         ZStack {
             Text("Profile").font(.builder(23.5, .bold))
             HStack {
-                Button { dismiss() } label: { Icon("x", size: 24).frame(width: 44, height: 44) }
+                Button { dismiss() } label: { Icon("x", size: 28).frame(width: 44, height: 44) }
                     .accessibilityIdentifier("fullProfileClose").accessibilityLabel("Close")
                 Spacer()
             }
@@ -360,13 +360,15 @@ struct FullProfileView: View {
         .padding(.top, 15)
     }
 
-    private func chip(_ text: String) -> some View {
-        Text(text).font(.builder(14.5)).lineLimit(1).fixedSize().padding(.horizontal, 12).frame(height: 31).background(Color.tile, in: Capsule())
+    private func chip(_ text: String, dim: Bool) -> some View {
+        Text(text).font(.builder(14.5)).lineLimit(1).fixedSize().padding(.horizontal, 12).frame(height: 31)
+            .background(Color.tile.opacity(dim ? 0.6 : 1), in: Capsule())
+            .foregroundStyle(dim ? Color.dim.opacity(0.6) : Color.ink)
     }
 
     private func button(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(title).font(.builder(14.5, .bold)).frame(maxWidth: .infinity, minHeight: 40)
+            Text(title).font(.builder(13.5, .bold)).frame(maxWidth: .infinity, minHeight: 40)
                 .background(Color.tile, in: RoundedRectangle(cornerRadius: 8))
         }
     }

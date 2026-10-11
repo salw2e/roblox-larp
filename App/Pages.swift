@@ -93,7 +93,7 @@ struct RobuxPage: View {
             bar
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("Buy Robux").font(.builder(45, .bold)).padding(.top, 12)
+                    Text("Buy Robux").font(.builder(45, .bold)).padding(.top, 6)
                     Text("Robux packages").font(.builder(19.5, .bold)).padding(.top, 36)
                     (Text("By purchasing Robux, you agree to our ")
                         + Text("Terms of Use").font(.builder(12, .bold)).foregroundColor(Color.ink)
@@ -137,7 +137,7 @@ struct RobuxPage: View {
 
     private var bar: some View {
         HStack(spacing: 0) {
-            Button(action: close) { Icon("x", size: 22).frame(width: 44, height: 44) }
+            Button(action: close) { Icon("x", size: 32).frame(width: 44, height: 44) }
                 .accessibilityIdentifier("robuxClose").accessibilityLabel("Close")
                 .padding(.leading, 18)
             Icon("robux", size: 20).padding(.leading, 18)
