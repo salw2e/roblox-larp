@@ -1,9 +1,9 @@
-name: Blox
+name: SalBlox
 options:
   bundleIdPrefix: xyz.justsal
   deploymentTarget: { iOS: "17.0" }
 packages:
-  BloxKit: { path: Packages/BloxKit }
+  SalBloxKit: { path: Packages/SalBloxKit }
 settings:
   base:
     SWIFT_VERSION: "5.0"
@@ -12,12 +12,12 @@ settings:
     CODE_SIGNING_ALLOWED: "NO"
     TARGETED_DEVICE_FAMILY: "1"
 targets:
-  Blox:
+  SalBlox:
     type: application
     platform: iOS
     sources: [App]
     dependencies:
-      - package: BloxKit
+      - package: SalBloxKit
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: xyz.justsal.Blox
@@ -34,19 +34,19 @@ targets:
         CADisableMinimumFrameDurationOnPhone: true
         ITSAppUsesNonExemptEncryption: false
         BloxAPI: https://justsal.xyz/blox-api/KEY
-  BloxUITests:
+  SalBloxUITests:
     type: bundle.ui-testing
     platform: iOS
     sources: [UITests]
     dependencies:
-      - target: Blox
+      - target: SalBlox
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: xyz.justsal.BloxUITests
 schemes:
-  Blox:
+  SalBlox:
     build:
       targets:
-        Blox: all
+        SalBlox: all
     test:
-      targets: [BloxUITests]
+      targets: [SalBloxUITests]
