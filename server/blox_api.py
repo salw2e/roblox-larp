@@ -323,6 +323,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.ci_key()
         if self.path != "/look":
             return self.reply(404, {"error": "not found"})
+        q = {}
         try:
             n = int(self.headers.get("Content-Length", 0))
             if not 0 < n <= 200_000:
@@ -343,6 +344,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 out = look_of_outfit(q.get("base"), wear)
             self.reply(200, {**out, "budget": budget_now()})
         except Refused as e:
+            what = q.get("user") if isinstance(q, dict) and q.get("user") else [w.get("id") for w in (q.get("wear") or [])] if isinstance(q, dict) else "?"
+            sys.stderr.write(f"look refused: {e} | {what}\n")
             self.reply(422, {"error": str(e), "budget": budget_now()})
         except Exception as e:
             sys.stderr.write(f"look failed: {e!r}\n")

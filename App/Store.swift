@@ -121,11 +121,15 @@ final class Store: ObservableObject {
 
     private func drawSoon(after seconds: Double = 1.5, tries: Int = 0) {
         guard Self.drawsOnItsOwn else { return }
+        if drawing, autoDraw != nil { return }
         autoDraw?.cancel()
         autoDraw = Task { [weak self] in
             try? await Task.sleep(for: .seconds(seconds))
             guard let self, !Task.isCancelled, self.profile.needsRedraw, self.modelVersion > 0 else { return }
-            if self.drawing { return self.drawSoon(after: 2, tries: tries) }
+            if self.drawing {
+                self.autoDraw = nil
+                return self.drawSoon(after: 2, tries: tries)
+            }
             if let b = await Roblox.budget(), let left = b.left, left < 2, b.resetIn > 0 {
                 guard !Task.isCancelled else { return }
                 self.drawNote = "Your avatar updates in \(max(1, (b.resetIn + 59) / 60)) min"
@@ -133,6 +137,7 @@ final class Store: ObservableObject {
             }
             guard !Task.isCancelled else { return }
             let drew = await self.redraw()
+            self.autoDraw = nil
             if !drew, tries < 4 { self.drawSoon(after: 60, tries: tries + 1) }        // busy or offline: try again
             else if drew, self.profile.needsRedraw { self.drawSoon() }                // changed again while drawing
         }

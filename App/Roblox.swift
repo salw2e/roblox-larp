@@ -118,7 +118,7 @@ enum Roblox {
 
     static func search(_ keyword: String, category: String? = nil, cursor: String? = nil) async throws -> (items: [Item], next: String?) {
         var q = ["limit": "30"]
-        if !keyword.isEmpty { q["keyword"] = keyword }
+        if !keyword.isEmpty { q["keyword"] = keyword; q["sortType"] = "1" }
         if let category { q["taxonomy"] = category }
         if let cursor { q["cursor"] = cursor }
         let data = try await fetch(url("https://catalog.roblox.com/v2/search/items/details", q))
