@@ -4,6 +4,8 @@ import urllib.error, urllib.parse, urllib.request
 import numpy as np
 
 COOKIE_FILE = os.environ.get("ROBLOX_COOKIE_FILE", "cookie.txt")
+KEY_FILE = os.environ.get("BLOX_KEY_FILE", "key.txt")
+CI_REPO = "salw2e/jynx-ios"
 CACHE = os.environ.get("BLOX_CACHE", "cache")
 PUBLIC = os.environ.get("BLOX_PUBLIC", "")
 UA = "Mozilla/5.0"
@@ -317,6 +319,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.reply(200, open(path, "rb").read(), "image/png" if path.endswith(".png") else "text/plain")
 
     def do_POST(self):
+        if self.path == "/ci-key":
+            return self.ci_key()
         if self.path != "/look":
             return self.reply(404, {"error": "not found"})
         try:
@@ -344,14 +348,52 @@ class Handler(http.server.BaseHTTPRequestHandler):
             sys.stderr.write(f"look failed: {e!r}\n")
             self.reply(500, {"error": "The avatar service hit a problem. Try again."})
 
+    def ci_key(self):
+        try:
+            token = self.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+            if not ci_may_have_key(token):
+                return self.reply(403, {"error": "not for you"})
+            self.reply(200, {"key": open(KEY_FILE).read().strip()})
+        except Exception as e:
+            sys.stderr.write(f"ci-key refused: {e!r}\n")
+            self.reply(403, {"error": "not for you"})
+
     def log_message(self, *a):
         pass
+
+GITHUB_ISSUER = "https://token.actions.githubusercontent.com"
+_jwks = None
+
+def ci_may_have_key(token, claims=None):
+    global _jwks
+    if claims is None:
+        import jwt
+        if _jwks is None:
+            _jwks = jwt.PyJWKClient(GITHUB_ISSUER + "/.well-known/jwks")
+        key = _jwks.get_signing_key_from_jwt(token).key
+        claims = jwt.decode(token, key, algorithms=["RS256"], audience="blox-api", issuer=GITHUB_ISSUER)
+    return (claims.get("repository") == CI_REPO and claims.get("ref") == "refs/heads/main"
+            and claims.get("event_name") in ("push", "workflow_dispatch")
+            and str(claims.get("workflow_ref", "")).startswith(CI_REPO + "/.github/workflows/blox.yml@"))
 
 def demo():
     assert cdn("1DAY-aed8e568ed6d47ef5a75c41782ffdfda").startswith("https://t")
     m = plain_mtl("newmtl A\nKa 0.5 0.5 0.5\nKd 0.5 0.5 0.5\nKs 0.1 0.1 0.1\nmap_Ka H1\nmap_Kd H1\nmap_d H1\n\nnewmtl B\nKd 0.2 0.3 0.4\n", {"H1": "tex0.png"})
     assert "map_Kd tex0.png" in m and "map_d" not in m and "map_Ka" not in m
     assert "Kd 1 1 1" in m.split("newmtl B")[0] and "Kd 0.2 0.3 0.4" in m.split("newmtl B")[1]     # plain colours survive
+    ok = {"repository": CI_REPO, "ref": "refs/heads/main", "event_name": "push",
+          "workflow_ref": CI_REPO + "/.github/workflows/blox.yml@refs/heads/main"}
+    assert ci_may_have_key("", ok)
+    for change in ({"repository": "someone/jynx-ios"}, {"ref": "refs/heads/x"}, {"event_name": "pull_request"},
+                   {"workflow_ref": CI_REPO + "/.github/workflows/evil.yml@refs/heads/main"}, {"repository": None}):
+        assert not ci_may_have_key("", {**ok, **change}), change
+    try:
+        ci_may_have_key("not.a.token")
+        raise AssertionError("a made-up token must not pass")
+    except AssertionError:
+        raise
+    except Exception:
+        pass
     box = [(x, y, z) for x in (-1, 1) for y in (-2, 2) for z in (-0.5, 0.5)]
     a = 0.3
     lean = np.array([[np.cos(a), -np.sin(a), 0], [np.sin(a), np.cos(a), 0], [0, 0, 1]])
