@@ -4,22 +4,17 @@ roblox look-alike for iphone. fake profile, robux, avatar, marketplace, the lot.
 
 ## the app
 
-<p>
-  <img src="shots/profile.jpg" width="240" alt="profile">
-  <img src="shots/menu.jpg" width="240" alt="menu">
-  <img src="shots/marketplace.jpg" width="240" alt="marketplace">
-  <img src="shots/item.jpg" width="240" alt="item">
-  <img src="shots/robux.jpg" width="240" alt="robux">
-</p>
+<picture>
+  <source media="(min-width: 768px)" srcset="shots/app-wide.webp">
+  <img src="shots/app.webp" width="100%" alt="profile, menu, marketplace, item page, buy robux">
+</picture>
 
 ## the editor
 
-<p>
-  <img src="shots/edit-profile.jpg" width="240" alt="edit profile">
-  <img src="shots/outfits.jpg" width="240" alt="outfits">
-  <img src="shots/skin.jpg" width="240" alt="skin">
-  <img src="shots/build.jpg" width="240" alt="build">
-</p>
+<picture>
+  <source media="(min-width: 768px)" srcset="shots/editor-wide.webp">
+  <img src="shots/editor.webp" width="100%" alt="edit profile, saved outfits, skin, build">
+</picture>
 
 ## build
 
