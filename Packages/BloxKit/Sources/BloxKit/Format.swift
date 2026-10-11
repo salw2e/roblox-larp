@@ -35,6 +35,23 @@ public func digits(in text: String) -> String {
     String(text.filter { $0.isASCII && $0.isNumber }.prefix(15))
 }
 
+public func chatTime(_ at: Double, now: Date = Date(), zone: TimeZone = .current) -> String {
+    let s = max(0, now.timeIntervalSince1970 - at)
+    switch s {
+    case ..<60: return "now"
+    case ..<3600: return "\(Int(s / 60))m"
+    case ..<86400: return "\(Int(s / 3600))h"
+    case ..<(7 * 86400): return "\(Int(s / 86400))d"
+    case ..<(28 * 86400): return "\(Int(s / (7 * 86400)))w"
+    default:
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US")
+        f.timeZone = zone
+        f.dateFormat = "MMM d, yyyy"
+        return f.string(from: Date(timeIntervalSince1970: at))
+    }
+}
+
 public func number(from text: String) -> Int {
     Int(digits(in: text)) ?? 0
 }

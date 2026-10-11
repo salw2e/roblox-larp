@@ -281,6 +281,22 @@ final class ParseTests: XCTestCase {
         XCTAssertTrue(p.needsRedraw)
     }
 
+    func testChatTimes() {
+        let now = Date(timeIntervalSince1970: 1_791_676_800)                 // 2026-10-11 00:00 UTC
+        let t = now.timeIntervalSince1970, utc = TimeZone(identifier: "UTC")!
+        XCTAssertEqual(chatTime(t - 30, now: now), "now")
+        XCTAssertEqual(chatTime(t - 5 * 60, now: now), "5m")
+        XCTAssertEqual(chatTime(t - 3 * 3600, now: now), "3h")
+        XCTAssertEqual(chatTime(t - 5 * 86400, now: now), "5d")
+        XCTAssertEqual(chatTime(t - 7 * 86400, now: now), "1w")
+        XCTAssertEqual(chatTime(t - 20 * 86400, now: now), "2w")
+        XCTAssertEqual(chatTime(t - 30 * 86400, now: now, zone: utc), "Sep 11, 2026")
+        XCTAssertEqual(chatTime(t + 100, now: now), "now", "a clock set back never shows a negative time")
+        var p = Profile()
+        p.say(" hi ", to: 7, mine: true, at: now)
+        XCTAssertEqual(p.chat(with: 7).last?.at, t)
+    }
+
     func testSomeoneElsesProfile() throws {
         let p = try XCTUnwrap(Parse.person(try fixture("user-156")))
         XCTAssertEqual(p.name, "builderman")

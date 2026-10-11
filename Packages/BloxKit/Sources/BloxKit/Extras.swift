@@ -4,7 +4,8 @@ public struct ChatLine: Codable, Hashable, Sendable {
     public var mine: Bool
     public var text: String
     public var id: Int?
-    public init(mine: Bool, text: String, id: Int? = nil) { self.mine = mine; self.text = text; self.id = id }
+    public var at: Double?
+    public init(mine: Bool, text: String, id: Int? = nil, at: Double? = nil) { self.mine = mine; self.text = text; self.id = id; self.at = at }
 }
 
 public struct Notice: Codable, Identifiable, Hashable, Sendable {
@@ -107,10 +108,10 @@ extension Profile {
         return true
     }
 
-    public mutating func say(_ text: String, to friend: Int64, mine: Bool) {
+    public mutating func say(_ text: String, to friend: Int64, mine: Bool, at: Date = Date()) {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
-        chats["\(friend)", default: []].append(ChatLine(mine: mine, text: t, id: newId()))
+        chats["\(friend)", default: []].append(ChatLine(mine: mine, text: t, id: newId(), at: at.timeIntervalSince1970))
     }
 
     public func giveValue(of t: Trade) -> Int {

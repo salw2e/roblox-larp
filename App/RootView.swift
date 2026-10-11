@@ -56,7 +56,7 @@ struct RootView: View {
                 ZStack {
                     kept(.home) { HomeView(openMenu: openMenu, open: { open($0) }) }
                     kept(.moments) { MomentsView() }
-                    kept(.chat) { ChatList(open: { open($0) }) }
+                    kept(.chat) { ChatList(openMenu: openMenu, open: { open($0) }) }
                     kept(.me) { AppearanceView(active: tab == .me, openMenu: openMenu, open: { open($0) }) }
                 }
                 .frame(maxHeight: .infinity)
@@ -418,8 +418,8 @@ struct MenuView: View {
                     HStack(spacing: 18) {
                         Headshot(image: store.avatar, crop: store.profile.crop, size: 64)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(store.profile.shownName).font(.builder(17, .bold)).lineLimit(1)
-                            Text("@\(store.profile.shownUsername)").font(.builder(16)).foregroundStyle(Color(white: 0.85)).lineLimit(1)
+                            Text(store.profile.shownName).font(.builder(14.6, .bold)).lineLimit(1)
+                            Text("@\(store.profile.shownUsername)").font(.builder(14.4)).foregroundStyle(Color(white: 0.85)).lineLimit(1)
                         }
                     }
                 }
@@ -444,7 +444,7 @@ struct MenuView: View {
                 }
                 .padding(.top, 14)
                 Button { open(.info(.accounts)) } label: {
-                    Text("Switch Accounts").font(.builder(17)).frame(maxWidth: .infinity, minHeight: 50)
+                    Text("Switch Accounts").font(.builder(16)).frame(maxWidth: .infinity, minHeight: 50)
                         .background(Color.field, in: RoundedRectangle(cornerRadius: 10))
                 }
                 .buttonStyle(PressStyle())
@@ -463,12 +463,12 @@ struct MenuView: View {
             Button { open(.robux) } label: {
                 HStack(spacing: 12) {
                     RobuxIcon(size: 20)
-                    Text(grouped(store.profile.robux)).font(.builder(17, .bold)).accessibilityIdentifier("menuRobux")
+                    Text(grouped(store.profile.robux)).font(.builder(15, .bold)).accessibilityIdentifier("menuRobux")
                     Spacer()
                     Text("Buy Robux").font(.builder(14)).padding(.horizontal, 10).frame(height: 36)
                         .background(Color.field, in: RoundedRectangle(cornerRadius: 8))
                 }
-                .padding(.horizontal, 14).frame(height: 66).contentShape(Rectangle())
+                .padding(.horizontal, 14).frame(height: 56).contentShape(Rectangle())     // measured from Sal's screenshot
             }
             .accessibilityIdentifier("menuBuyRobux")
             Divider().overlay(Color(white: 0.25))
@@ -479,11 +479,11 @@ struct MenuView: View {
                         Text("More fun for less Robux.")
                         Text("Subscribe to Roblox Plus.")
                     }
-                    .font(.builder(13))
+                    .font(.builder(12.1))
                     Spacer()
                     Icon("chevron-large-right", size: 20)
                 }
-                .padding(.horizontal, 14).frame(height: 64).contentShape(Rectangle())
+                .padding(.horizontal, 14).frame(height: 58).contentShape(Rectangle())
             }
             .accessibilityIdentifier("menuPlus")
         }
@@ -493,10 +493,10 @@ struct MenuView: View {
     private func row(_ icon: String, _ title: String, count: Int = 0, page: Page? = nil) -> some View {
         Button { if page != nil { open(page) } } label: {
             HStack(spacing: 22) {
-                Icon(icon, size: 24).frame(width: 26)
-                Text(title).font(.builder(17, .bold))
+                Icon(icon, size: 21).frame(width: 26)
+                Text(title).font(.builder(16, .bold))
                 Spacer()
-                CountBubble(n: count, size: 22)
+                CountBubble(n: count, size: 17)
             }
             .frame(height: 44)
             .contentShape(Rectangle())
