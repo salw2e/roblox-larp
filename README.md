@@ -10,8 +10,6 @@ roblox look-alike for iphone. fake profile, robux, avatar, marketplace, the lot.
 
 ## the editor
 
-everything on the profile is yours to set.
-
 | <img src="shots/edit-profile.jpg" width="170"> | <img src="shots/outfits.jpg" width="170"> | <img src="shots/skin.jpg" width="170"> | <img src="shots/build.jpg" width="170"> |
 |:-:|:-:|:-:|:-:|
 | edit profile | saved outfits | skin | build |
