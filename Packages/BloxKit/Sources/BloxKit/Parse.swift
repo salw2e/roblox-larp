@@ -21,6 +21,12 @@ public enum Parse {
         String(decoding: data, as: UTF8.self).contains("\"Pending\"")
     }
 
+    public static func worn(_ data: Data) -> [Item] {
+        struct R: Decodable { struct A: Decodable { let id: Int64; let name: String? }; let assets: [A] }
+        guard let r = try? JSONDecoder().decode(R.self, from: data) else { return [] }
+        return r.assets.map { Item(id: $0.id, name: $0.name ?? "Item", creator: "", price: nil, wearing: true) }
+    }
+
     public static func wearing(_ data: Data) -> [Int64] {
         struct R: Decodable { let assetIds: [Int64] }
         return (try? JSONDecoder().decode(R.self, from: data))?.assetIds ?? []

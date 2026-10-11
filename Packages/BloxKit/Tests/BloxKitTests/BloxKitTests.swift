@@ -166,6 +166,11 @@ final class ParseTests: XCTestCase {
 
     func testWearingAndAssets() throws {
         XCTAssertEqual(Parse.wearing(try fixture("wearing")), [1080951, 1142116])
+        let worn = Parse.worn(try fixture("avatar-v2"))
+        XCTAssertEqual(worn.map(\.id), [1080951, 1142116])
+        XCTAssertEqual(worn.map(\.name), ["Builders Club Hard Hat", "bm-mo2.jpg"])
+        XCTAssertTrue(worn.allSatisfy { $0.wearing && $0.price == nil && $0.creator.isEmpty })
+        XCTAssertEqual(Parse.worn(Data("{}".utf8)), [])
         let limited = try XCTUnwrap(Parse.asset(try fixture("economy-limited")))
         XCTAssertEqual(limited.name, "Fiery Horns of the Netherworld")
         XCTAssertGreaterThan(limited.price ?? 0, 1_000_000)

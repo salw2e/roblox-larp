@@ -207,11 +207,13 @@ struct ItemPage: View {
                     }
                 }
                 .padding(.top, 16)
-                HStack(spacing: 4) {
-                    Text("By \(item.creator)").font(.builder(14.5)).foregroundStyle(Color.faint)
-                    if item.showsCreatorCheck { VerifiedBadge(size: 12) }
+                if !item.creator.isEmpty {
+                    HStack(spacing: 4) {
+                        Text("By \(item.creator)").font(.builder(14.5)).foregroundStyle(Color.faint)
+                        if item.showsCreatorCheck { VerifiedBadge(size: 12) }
+                    }
+                    .padding(.top, 4)
                 }
-                .padding(.top, 4)
                 PriceLine(price: (owned ?? item).price, size: 20).padding(.top, 14)
                 if let owned {
                     HStack(spacing: 6) {

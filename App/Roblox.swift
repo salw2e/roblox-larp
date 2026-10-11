@@ -76,25 +76,35 @@ enum Roblox {
     }
 
     static func wearing(_ userId: Int64) async throws -> [Item] {
-        let ids = Parse.wearing(try await fetch(URL(string: "https://avatar.roblox.com/v1/users/\(userId)/currently-wearing")!))
-        var found: [Int64: Item] = [:]
+        let worn = Parse.worn(try await fetch(URL(string: "https://avatar.roblox.com/v2/avatar/users/\(userId)/avatar")!))
+        var settled: [Int64: Item] = [:]
         for round in 0..<2 {
-            let missing = ids.filter { found[$0] == nil }
-            if missing.isEmpty { break }
+            let waiting = worn.filter { settled[$0.id] == nil }
+            if waiting.isEmpty { break }
             if round > 0 { try? await Task.sleep(for: .seconds(2)) }
-            for chunk in stride(from: 0, to: missing.count, by: 5).map({ Array(missing[$0..<min($0 + 5, missing.count)]) }) {
+            for chunk in stride(from: 0, to: waiting.count, by: 5).map({ Array(waiting[$0..<min($0 + 5, waiting.count)]) }) {
                 await withTaskGroup(of: Item?.self) { group in
-                    for id in chunk {
-                        group.addTask { try? Parse.asset(await fetch(URL(string: "https://economy.roblox.com/v2/assets/\(id)/details")!)) }
+                    for base in chunk {
+                        group.addTask {
+                            do {
+                                guard var item = Parse.asset(try await fetch(URL(string: "https://economy.roblox.com/v2/assets/\(base.id)/details")!)) else { return base }
+                                item.wearing = true
+                                return item
+                            } catch BloxError.server {
+                                return base
+                            } catch {
+                                return nil              // busy or offline: try it again
+                            }
+                        }
                     }
-                    for await item in group { if let item { found[item.id] = item } }
+                    for await item in group { if let item { settled[item.id] = item } }
                 }
             }
         }
-        guard ids.allSatisfy({ found[$0] != nil }) else {
+        guard worn.allSatisfy({ settled[$0.id] != nil }) else {
             throw BloxError.said("Roblox was too busy to list everything that user wears. Try again in a minute.")
         }
-        return await withThumbs(ids.compactMap { found[$0] }).map { var i = $0; i.wearing = true; return i }
+        return await withThumbs(worn.compactMap { settled[$0.id] })
     }
 
     // MARK: Catalog

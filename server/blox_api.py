@@ -208,8 +208,8 @@ def asset_ids(wear):
             ids.append(int(w["id"]))
     return ids
 
-def one_per_slot(picks):
-    picks = [(aid, kind) for aid, kind in picks if kind in WEARABLE]
+def one_per_slot(picks, worn_before=()):
+    picks = [(aid, kind) for aid, kind in picks if kind in WEARABLE or (kind is None and aid in worn_before)]
     last = {kind: aid for aid, kind in picks if kind in SINGLE}
     extras = [aid for aid, kind in picks if kind in ACCESSORY]
     dropped = set(extras[:-MAX_ACCESSORIES]) if len(extras) > MAX_ACCESSORIES else set()
@@ -217,7 +217,12 @@ def one_per_slot(picks):
 
 def type_of(aid):
     if aid not in asset_types:
-        asset_types[aid] = rbx(f"https://economy.roblox.com/v2/assets/{aid}/details", login=False).get("AssetTypeId")
+        try:
+            asset_types[aid] = rbx(f"https://economy.roblox.com/v2/assets/{aid}/details", login=False).get("AssetTypeId")
+        except Busy:
+            raise
+        except Refused:
+            return None
         remember(TYPES_FILE, asset_types)
     return asset_types[aid]
 
@@ -227,7 +232,7 @@ def outfit(base, wear):
     picks = [(aid, type_of(aid)) for aid in dict.fromkeys(asset_ids(wear))]
     kinds = dict(picks)
     assets = []
-    for n, aid in enumerate(one_per_slot(picks)):
+    for n, aid in enumerate(one_per_slot(picks, set(known))):
         entry = {"id": aid}
         if "meta" in known.get(aid, {}):
             entry["meta"] = known[aid]["meta"]
@@ -320,6 +325,11 @@ def demo():
     hats = [(100 + i, 8) for i in range(12)]
     assert one_per_slot(hats + [(9, 11)]) == [102 + i for i in range(10)] + [9]      # the newest ten accessories
     assert type_of(1028606) == type_of(1028606) and 1028606 in asset_types
+    assert type_of(1142116) is None and 1142116 not in asset_types
+    assert one_per_slot([(1142116, None), (5, 8)], {1142116}) == [1142116, 5]
+    assert one_per_slot([(1142116, None), (5, 8)]) == [5]
+    kept = outfit(user["definition"], [{"id": 1080951}, {"id": 1142116}])
+    assert [a["id"] for a in kept["assets"]] == [1080951, 1142116], kept["assets"]
     d = outfit(user["definition"], [{"id": 1028606}, {"id": 144076760}, {"id": 144076760}])
     assert [a["id"] for a in d["assets"]] == [1028606, 144076760] and d["bodyColors"] == user["definition"]["bodyColors"]
     worn = look_of_outfit(user["definition"], [{"id": 215718515}, {"id": 1028606}]) if os.environ.get("DEMO_RENDER") else user
