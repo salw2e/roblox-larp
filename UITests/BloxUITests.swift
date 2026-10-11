@@ -350,6 +350,10 @@ final class BloxUITests: XCTestCase {
     private func type(_ text: String, into field: XCUIElement) {
         reveal(field)
         field.tap()
+        for _ in 0..<3 where (field.value(forKey: "hasKeyboardFocus") as? Bool) != true {
+            sleep(1)
+            field.tap()
+        }
         let old = (field.value as? String) ?? ""
         if !old.isEmpty, old != field.placeholderValue {
             field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count))
