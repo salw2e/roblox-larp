@@ -281,6 +281,20 @@ final class ParseTests: XCTestCase {
         XCTAssertTrue(p.needsRedraw)
     }
 
+    func testSomeoneElsesProfile() throws {
+        let p = try XCTUnwrap(Parse.person(try fixture("user-156")))
+        XCTAssertEqual(p.name, "builderman")
+        XCTAssertEqual(p.bio, "Welcome to Roblox!")
+        XCTAssertTrue(p.verified)
+        XCTAssertEqual(Parse.count(try fixture("followers-count")), 69_906_696)
+        XCTAssertNil(Parse.count(try fixture("count-error")), "Roblox's too-often reply is not a count of 0")
+        let fav = Parse.favorites(try fixture("favorites"))
+        XCTAssertEqual(fav.count, 10)
+        XCTAssertEqual(fav.first?.id, 10766456501)
+        XCTAssertEqual(fav.first?.name, "The Hunt: Roblox 20")
+        XCTAssertEqual(Parse.favorites(Data("{}".utf8)), [])
+    }
+
     func testOutfitsAndShelves() {
         var p = Profile()
         p.wear(Item(id: 1, name: "Hat", price: 0, kind: 8))

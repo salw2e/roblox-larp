@@ -636,33 +636,116 @@ struct FriendPage: View {
     @Environment(\.dismiss) private var dismiss
     let id: Int64
     let open: (Page) -> Void
+    @State private var them: Roblox.Someone?
+    @State private var wholeBio = false
 
     var body: some View {
         ScrollView {
             if let f = store.profile.friendList.first(where: { $0.id == id }) {
-                VStack(spacing: 0) {
-                    RemoteCircle(url: f.headshot, size: 140)
-                        .overlay(alignment: .bottomTrailing) {
-                            if f.online { Circle().fill(Color.bg).frame(width: 30, height: 30).overlay(Circle().fill(Color.online).frame(width: 22, height: 22)) }
-                        }
-                        .padding(.top, 24)
-                    Text(f.displayName).font(.builder(26, .bold)).padding(.top, 16)
-                    Text("@\(f.name)").font(.builder(14.5)).foregroundStyle(Color.faint).padding(.top, 2)
-                    Text(f.status.isEmpty ? (f.online ? "Online" : "Offline") : f.status).font(.builder(14.5)).foregroundStyle(Color.faint).padding(.top, 10)
-                    WideButton(title: "Chat", icon: "speech-bubble-align-center") { open(.chat(f.id)) }
-                        .accessibilityIdentifier("friendChat").padding(.top, 24)
-                    WideButton(title: "Unfriend", main: false) {
-                        store.profile.removeFriend(f.id)
-                        dismiss()
-                    }
-                    .accessibilityIdentifier("friendRemove").padding(.top, 10)
-                }
-                .padding(.horizontal, 20)
+                content(f)
             } else {
                 Text("This friend was removed.").font(.builder(14.5)).foregroundStyle(Color.faint).padding(.top, 60)
             }
         }
-        .page("")
+        .page("Profile")
+        .task { if them == nil { them = await Roblox.someone(id) } }
+    }
+
+    private func content(_ f: Friend) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            RoundedRectangle(cornerRadius: 8).fill(Color.rgb(25, 26, 30))
+                .overlay {
+                    if let picture = them?.picture { RemoteImage(url: picture, fill: false).padding(.vertical, 10) }
+                    else if them == nil { ProgressView().tint(Color.faint) }
+                }
+                .frame(height: 300)
+            HStack(alignment: .top, spacing: 13) {
+                RemoteCircle(url: f.headshot, size: 88)
+                    .overlay(alignment: .bottomTrailing) {
+                        if f.online {
+                            Circle().fill(Color.bg).frame(width: 20, height: 20).overlay(Circle().fill(Color.online).frame(width: 14, height: 14)).offset(x: -4, y: -4)
+                        }
+                    }
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text(f.displayName).font(.builder(26, .bold)).lineLimit(1).minimumScaleFactor(0.75).accessibilityIdentifier("friendName")
+                        if them?.person?.verified == true { VerifiedBadge(size: 19.5).fixedSize() }
+                    }
+                    Text("@\(f.name)").font(.builder(12)).foregroundStyle(Color.faint).lineLimit(1)
+                }
+                .padding(.top, 34)
+            }
+            .padding(.top, -20)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    if let n = them?.friends { chip("\(short(n)) Friends", dim: n == 0) }
+                    if let n = them?.followers { chip("\(short(n)) Followers", dim: n == 0) }
+                    if let n = them?.following { chip("\(short(n)) Following", dim: n == 0) }
+                }
+            }
+            .padding(.horizontal, -15).contentMargins(.horizontal, 15)
+            .padding(.top, 17)
+            if !f.status.isEmpty {
+                Text(f.status).font(.builder(14.5, .medium)).foregroundStyle(Color.online).padding(.top, 14)
+            }
+            if let bio = them?.person?.bio, !bio.isEmpty {
+                Text(bio).font(.builder(14.5)).foregroundStyle(Color.faint).lineLimit(wholeBio ? nil : 2).padding(.top, 18)
+                if bio.count > 80 || bio.contains("\n") {
+                    Button(wholeBio ? "less" : "more") { wholeBio.toggle() }
+                        .font(.builder(14.5)).underline().foregroundStyle(Color.faint).padding(.top, 2)
+                }
+            }
+            HStack(spacing: 8) {
+                Button { open(.chat(f.id)) } label: {
+                    HStack(spacing: 6) {
+                        Icon("speech-bubble-align-center", size: 18, filled: true)
+                        Text("Chat").font(.builder(13.5, .bold))
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 40).background(Color.bloxBlue, in: RoundedRectangle(cornerRadius: 8))
+                    .foregroundStyle(.white)
+                }
+                .accessibilityIdentifier("friendChat")
+                Menu {
+                    Button("Unfriend", role: .destructive) {
+                        store.profile.removeFriend(f.id)
+                        dismiss()
+                    }
+                } label: {
+                    Icon("three-dots-horizontal", size: 20).frame(width: 40, height: 40).background(Color.tile, in: RoundedRectangle(cornerRadius: 8))
+                }
+                .accessibilityIdentifier("friendMore").accessibilityLabel("More")
+            }
+            .padding(.top, 24)
+            if let worn = them?.wearing, !worn.isEmpty {
+                section("Currently Wearing") {
+                    ForEach(worn) { item in Button { open(.item(item)) } label: { ItemCard(item: item).frame(width: 108) } }
+                }
+            }
+            if let games = them?.favorites, !games.isEmpty {
+                section("Favorites") {
+                    ForEach(games) { g in Button { open(.game(g)) } label: { GameCard(game: g).frame(width: 108) } }
+                }
+            }
+        }
+        .padding(.horizontal, 15).padding(.top, 16).padding(.bottom, 30)
+        .buttonStyle(PressStyle())
+    }
+
+    private func chip(_ text: String, dim: Bool) -> some View {
+        Text(text).font(.builder(14.5)).lineLimit(1).fixedSize().padding(.horizontal, 12).frame(height: 31)
+            .background(Color.tile.opacity(dim ? 0.6 : 1), in: Capsule())
+            .foregroundStyle(dim ? Color.dim.opacity(0.6) : Color.ink)
+    }
+
+    private func section<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title).font(.builder(19, .bold))
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 12) { content() }
+            }
+            .padding(.horizontal, -15).contentMargins(.horizontal, 15)
+        }
+        .padding(.top, 34)
     }
 }
 

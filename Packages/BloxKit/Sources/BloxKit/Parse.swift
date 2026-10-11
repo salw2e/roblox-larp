@@ -9,6 +9,25 @@ public enum Parse {
         return User(id: u.id, name: u.name, displayName: u.displayName, verified: u.hasVerifiedBadge ?? false)
     }
 
+    public struct Person: Equatable, Sendable {
+        public var id: Int64; public var name: String; public var displayName: String; public var bio: String; public var verified: Bool
+    }
+    public static func person(_ data: Data) -> Person? {
+        struct R: Decodable { let id: Int64; let name: String; let displayName: String?; let description: String?; let hasVerifiedBadge: Bool? }
+        guard let r = try? JSONDecoder().decode(R.self, from: data) else { return nil }
+        return Person(id: r.id, name: r.name, displayName: r.displayName ?? r.name, bio: r.description ?? "", verified: r.hasVerifiedBadge ?? false)
+    }
+
+    public static func count(_ data: Data) -> Int? {
+        struct R: Decodable { let count: Int }
+        return (try? JSONDecoder().decode(R.self, from: data))?.count
+    }
+
+    public static func favorites(_ data: Data) -> [Game] {
+        struct R: Decodable { struct G: Decodable { let id: Int64; let name: String }; let data: [G] }
+        return (try? JSONDecoder().decode(R.self, from: data))?.data.map { Game(id: $0.id, name: $0.name, playing: 0) } ?? []
+    }
+
     public static func images(_ data: Data) -> [Int64: String] {
         struct R: Decodable { struct T: Decodable { let targetId: Int64; let state: String; let imageUrl: String? }; let data: [T] }
         guard let r = try? JSONDecoder().decode(R.self, from: data) else { return [:] }

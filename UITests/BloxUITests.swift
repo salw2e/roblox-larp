@@ -135,6 +135,8 @@ final class BloxUITests: XCTestCase {
 
         any("homeFriend").tap()
         XCTAssertTrue(app.buttons["friendChat"].waitForExistence(timeout: 5))
+        XCTAssertTrue(any("friendName").exists)
+        sleep(6)
         shot("10a friend")
         back()
         app.buttons["homeSearch"].tap()

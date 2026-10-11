@@ -169,6 +169,34 @@ enum Roblox {
         return await complete(Array(Parse.games(data).prefix(20)))
     }
 
+    struct Someone {
+        var person: Parse.Person?
+        var friends: Int?, followers: Int?, following: Int?
+        var picture: String?
+        var wearing: [Item] = []
+        var favorites: [Game] = []
+    }
+
+    static func someone(_ id: Int64) async -> Someone {
+        @Sendable func count(_ kind: String) async -> Int? {
+            for attempt in 0..<2 {
+                if attempt > 0 { try? await Task.sleep(for: .seconds(1.5)) }
+                if let d = try? await fetch(URL(string: "https://friends.roblox.com/v1/users/\(id)/\(kind)/count")!), let n = Parse.count(d) { return n }
+            }
+            return nil
+        }
+        async let person = (try? await fetch(URL(string: "https://users.roblox.com/v1/users/\(id)")!)).flatMap(Parse.person)
+        async let friends = count("friends")
+        async let followers = count("followers")
+        async let following = count("followings")
+        async let picture = pictures("https://thumbnails.roblox.com/v1/users/avatar", ["userIds": "\(id)", "size": "720x720", "format": "Png"])[id]
+        async let worn = try? wearing(id)
+        async let favs = (try? await fetch(url("https://games.roblox.com/v2/users/\(id)/favorite/games", ["limit": "10"]))).map(Parse.favorites) ?? []
+        let favorites = await complete(await favs)
+        return await Someone(person: person, friends: friends, followers: followers, following: following, picture: picture,
+                             wearing: worn ?? [], favorites: favorites)
+    }
+
     static func complete(_ games: [Game]) async -> [Game] {
         guard !games.isEmpty else { return [] }
         let ids = games.map(\.id)
