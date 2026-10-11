@@ -281,7 +281,7 @@ struct RobuxPage: View {
                         .accessibilityIdentifier("faq-\(i)")
                         if open {
                             Self.faqs[i].a.font(.builder(14)).foregroundStyle(Color.faint).lineSpacing(2.5)
-                                .padding(.bottom, 18).fixedSize(horizontal: false, vertical: true)
+                                .padding(.top, -7.5).padding(.bottom, 18).fixedSize(horizontal: false, vertical: true)
                         }
                     }
                     .padding(.horizontal, 12.5)
