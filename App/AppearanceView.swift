@@ -34,38 +34,38 @@ struct AppearanceView: View {
         ZStack(alignment: .top) {
             LinearGradient(colors: [Color(white: 0.86), Color(white: 0.95)], startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea(edges: .top)
-            AvatarPicture(image: store.avatar).padding(.top, 50).padding(.bottom, 10)
+            AvatarPicture(image: store.avatar).padding(.top, 60).padding(.bottom, 16)
             VStack(spacing: 14) {
                 HStack {
-                    Button { dismiss() } label: { Image(systemName: "arrow.left").font(.system(size: 24)) }
+                    Button { dismiss() } label: { Image(systemName: "arrow.left").font(.system(size: 20)) }
                         .accessibilityIdentifier("appearanceBack")
                     Spacer()
                     tabs
                     Spacer()
                     Button { withAnimation { searching.toggle() } } label: {
-                        Image(systemName: "magnifyingglass").font(.system(size: 24))
+                        Image(systemName: "magnifyingglass").font(.system(size: 20))
                     }
                     .accessibilityIdentifier("searchToggle")
                 }
                 HStack {
-                    VStack(spacing: 18) {
-                        Headshot(image: store.avatar, crop: store.profile.crop, size: 64)
-                        Image(systemName: "figure.stand").font(.system(size: 22))
+                    VStack(spacing: 12) {
+                        Headshot(image: store.avatar, crop: store.profile.crop, size: 38)
+                        Image(systemName: "figure.stand").font(.system(size: 16))
                     }
-                    .padding(8).background(.white, in: Capsule())
+                    .padding(5).background(.white, in: Capsule())
                     Spacer()
                     HStack(spacing: 8) {
-                        RobuxIcon(size: 22)
-                        Text(short(store.profile.robux)).font(.system(size: 21, weight: .medium))
+                        RobuxIcon(size: 17)
+                        Text(short(store.profile.robux)).font(.system(size: 16, weight: .medium))
                     }
-                    .padding(.horizontal, 22).frame(height: 60).background(.white, in: Capsule())
+                    .padding(.horizontal, 16).frame(height: 44).background(.white, in: Capsule())
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("robuxPill")
                 }
             }
             .padding(.horizontal, 22)
         }
-        .frame(height: 380)
+        .frame(height: 400)
     }
 
     private var tabs: some View {
@@ -73,13 +73,13 @@ struct AppearanceView: View {
             tab("Marketplace", on: !customize) { customize = false }
             tab("Customize", on: customize) { customize = true }
         }
-        .padding(5).background(.white.opacity(0.7), in: RoundedRectangle(cornerRadius: 16))
+        .padding(4).background(.white.opacity(0.7), in: RoundedRectangle(cornerRadius: 13))
     }
 
     private func tab(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(title).font(.system(size: 20, weight: .medium)).padding(.horizontal, 14).frame(height: 46)
-                .background(on ? Color(white: 0.88) : .clear, in: RoundedRectangle(cornerRadius: 12))
+            Text(title).font(.system(size: 16, weight: .medium)).padding(.horizontal, 12).frame(height: 36)
+                .background(on ? Color(white: 0.88) : .clear, in: RoundedRectangle(cornerRadius: 10))
                 .foregroundStyle(on ? .primary : Color.faint)
         }
         .accessibilityIdentifier("tab-\(title)")
@@ -103,14 +103,14 @@ struct AppearanceView: View {
                 .onSubmit { Task { await load(query) } }
                 .accessibilityIdentifier("catalogSearch")
         }
-        .font(.system(size: 19)).padding(.horizontal, 16).frame(height: 50)
+        .font(.system(size: 16)).padding(.horizontal, 12).frame(height: 40)
         .background(Color.field, in: RoundedRectangle(cornerRadius: 14))
         .padding(.horizontal, 22).padding(.bottom, 8)
     }
 
     private var marketplace: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text(query.isEmpty ? "Recommended For You" : "Results").font(.system(size: 28, weight: .bold))
+            Text(query.isEmpty ? "Recommended For You" : "Results").font(.system(size: 20, weight: .bold))
             if loading { ProgressView().frame(maxWidth: .infinity) }
             if let failure { Text(failure).foregroundStyle(Color.faint) }
             LazyVGrid(columns: grid, spacing: 20) {
@@ -126,7 +126,7 @@ struct AppearanceView: View {
 
     private var inventory: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("Inventory").font(.system(size: 28, weight: .bold))
+            Text("Inventory").font(.system(size: 20, weight: .bold))
             Text("Tap to put on or take off. Hold an item to change its price or remove it.").foregroundStyle(Color.faint)
             LazyVGrid(columns: grid, spacing: 20) {
                 ForEach(store.profile.items) { item in

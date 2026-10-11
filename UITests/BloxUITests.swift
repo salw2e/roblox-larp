@@ -89,11 +89,18 @@ final class BloxUITests: XCTestCase {
     }
 
     private func type(_ text: String, into field: XCUIElement) {
+        dismissKeyboard()
         reveal(field)
         field.tap()
         let old = (field.value as? String) ?? ""
         if !old.isEmpty { field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count)) }
         field.typeText(text)
+    }
+
+    private func dismissKeyboard() {
+        guard app.keyboards.count > 0 else { return }
+        if app.buttons["Done"].exists { app.buttons["Done"].tap() }
+        _ = app.keyboards.firstMatch.waitForNonExistence(timeout: 3)
     }
 
     private func shot(_ name: String) {

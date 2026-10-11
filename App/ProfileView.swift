@@ -10,20 +10,20 @@ struct ProfileView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 stage
-                header.padding(.top, -60)
-                chips.padding(.top, 28)
+                header.padding(.top, -24)
+                chips.padding(.top, 18)
                 if !store.profile.bio.isEmpty {
-                    Text(store.profile.bio).font(.system(size: 21)).padding(.top, 28).accessibilityIdentifier("bio")
+                    Text(store.profile.bio).font(.system(size: 16)).padding(.top, 20).accessibilityIdentifier("bio")
                 }
-                buttons.padding(.top, 28)
-                wearing.padding(.top, 36)
+                buttons.padding(.top, 20)
+                wearing.padding(.top, 26)
                 if !store.profile.games.isEmpty { games.padding(.top, 32) }
                 NavigationLink { FullProfileView() } label: {
-                    Text("View full profile").font(.system(size: 21, weight: .medium)).frame(maxWidth: .infinity, minHeight: 64)
+                    Text("View full profile").font(.system(size: 16, weight: .medium)).frame(maxWidth: .infinity, minHeight: 44)
                         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.primary, lineWidth: 1.5))
                 }
                 .accessibilityIdentifier("viewFullProfile")
-                .padding(.vertical, 32)
+                .padding(.vertical, 24)
             }
             .padding(.horizontal, 22)
         }
@@ -35,9 +35,9 @@ struct ProfileView: View {
 
     private var stage: some View {
         ZStack(alignment: .topLeading) {
-            AvatarPicture(image: store.avatar).frame(height: 400).frame(maxWidth: .infinity).padding(.top, 70)
-            Image(systemName: "xmark").font(.system(size: 22, weight: .medium))
-                .frame(width: 50, height: 50).background(.white, in: Circle())
+            AvatarPicture(image: store.avatar).frame(height: 230).frame(maxWidth: .infinity).padding(.top, 60).padding(.bottom, 20)
+            Image(systemName: "xmark").font(.system(size: 18, weight: .medium))
+                .frame(width: 40, height: 40).background(.white, in: Circle())
                 .padding(.top, 8)
         }
         .background(
@@ -48,13 +48,13 @@ struct ProfileView: View {
 
     private var header: some View {
         HStack(spacing: 16) {
-            Headshot(image: store.avatar, crop: store.profile.crop, size: 128)
+            Headshot(image: store.avatar, crop: store.profile.crop, size: 86)
             VStack(alignment: .leading, spacing: 4) {
-                NameLine(profile: store.profile, font: 26)
-                Text("@\(store.profile.username)").font(.system(size: 19)).foregroundStyle(Color.faint).lineLimit(1)
+                NameLine(profile: store.profile, font: 21)
+                Text("@\(store.profile.username)").font(.system(size: 15)).foregroundStyle(Color.faint).lineLimit(1)
                     .accessibilityIdentifier("username")
             }
-            .padding(.top, 50)
+            .padding(.top, 30)
         }
     }
 
@@ -68,8 +68,8 @@ struct ProfileView: View {
     }
 
     private func chip(_ text: String, dim: Bool, id: String) -> some View {
-        Text(text).font(.system(size: 17)).lineLimit(1).minimumScaleFactor(0.7)
-            .padding(.horizontal, 16).frame(height: 44)
+        Text(text).font(.system(size: 14)).lineLimit(1).minimumScaleFactor(0.7)
+            .padding(.horizontal, 13).frame(height: 32)
             .background(Color.field.opacity(dim ? 0.6 : 1), in: Capsule())
             .foregroundStyle(dim ? Color(white: 0.65) : .primary)
             .accessibilityIdentifier(id)
@@ -78,30 +78,30 @@ struct ProfileView: View {
     private var buttons: some View {
         HStack(spacing: 12) {
             Button { dressing = true } label: {
-                Text("Edit appearance").frame(maxWidth: .infinity, minHeight: 58)
+                Text("Edit appearance").frame(maxWidth: .infinity, minHeight: 40)
                     .background(Color.bloxBlue, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(.white)
             }
             .accessibilityIdentifier("editAppearance")
             Button { editing = true } label: {
-                Text("Edit profile").frame(maxWidth: .infinity, minHeight: 58)
+                Text("Edit profile").frame(maxWidth: .infinity, minHeight: 40)
                     .background(Color.field, in: RoundedRectangle(cornerRadius: 14))
             }
             .accessibilityIdentifier("editProfile")
-            Image(systemName: "qrcode").font(.system(size: 24)).frame(width: 58, height: 58)
+            Image(systemName: "qrcode").font(.system(size: 18)).frame(width: 40, height: 40)
                 .background(Color.field, in: RoundedRectangle(cornerRadius: 14))
         }
-        .font(.system(size: 20, weight: .medium))
+        .font(.system(size: 16, weight: .medium)).lineLimit(1)
     }
 
     private var wearing: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("Currently Wearing").font(.system(size: 28, weight: .bold))
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Currently Wearing").font(.system(size: 21, weight: .bold))
             if store.profile.wearing.isEmpty {
                 Text("Nothing yet. Tap Edit appearance to put items on.").foregroundStyle(Color.faint)
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 14) {
-                    ForEach(store.profile.wearing) { ItemCard(item: $0).frame(width: 170).accessibilityIdentifier("wornItem") }
+                    ForEach(store.profile.wearing) { ItemCard(item: $0).frame(width: 116).accessibilityIdentifier("wornItem") }
                 }
             }
             .padding(.horizontal, -22).contentMargins(.horizontal, 22)
@@ -110,10 +110,10 @@ struct ProfileView: View {
 
     private var games: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("Favorites").font(.system(size: 28, weight: .bold))
+            Text("Favorites").font(.system(size: 21, weight: .bold))
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 14) {
-                    ForEach(store.profile.games) { GameCard(game: $0).frame(width: 150).accessibilityIdentifier("profileGame") }
+                    ForEach(store.profile.games) { GameCard(game: $0).frame(width: 116).accessibilityIdentifier("profileGame") }
                 }
             }
             .padding(.horizontal, -22).contentMargins(.horizontal, 22)

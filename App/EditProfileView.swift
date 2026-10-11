@@ -14,7 +14,7 @@ struct EditProfileView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 10) {
                     account
                     counts
                     bio
@@ -45,21 +45,21 @@ struct EditProfileView: View {
     private var titleBar: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Edit — Profile").font(.system(size: 30, weight: .bold))
+                Text("Edit — Profile").font(.system(size: 21, weight: .bold))
                 Spacer()
-                Button { dismiss() } label: { Image(systemName: "xmark").font(.system(size: 24, weight: .medium)) }
+                Button { dismiss() } label: { Image(systemName: "xmark").font(.system(size: 19, weight: .medium)) }
                     .accessibilityIdentifier("closeEdit")
             }
-            .padding(.horizontal, 22).padding(.vertical, 18)
+            .padding(.horizontal, 22).padding(.vertical, 14)
             Divider()
         }
         .background(.white)
     }
 
     private var account: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             heading("Account")
-            HStack(spacing: 16) {
+            HStack(spacing: 10) {
                 labelled("Username") { TextField("", text: $store.profile.username).field().accessibilityIdentifier("usernameField") }
                 labelled("Display name") { TextField("", text: $store.profile.displayName).field().accessibilityIdentifier("displayNameField") }
             }
@@ -69,9 +69,9 @@ struct EditProfileView: View {
     }
 
     private var counts: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             heading("Friends, followers & following")
-            HStack(spacing: 16) {
+            HStack(spacing: 10) {
                 labelled("Friends") { NumberField(value: $store.profile.friends, id: "friendsField") }
                 labelled("Followers") { NumberField(value: $store.profile.followers, id: "followersField") }
                 labelled("Following") { NumberField(value: $store.profile.following, id: "followingField") }
@@ -80,13 +80,13 @@ struct EditProfileView: View {
     }
 
     private var bio: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             heading("Bio")
             labelled("About (up to 1,000 characters)") {
                 TextEditor(text: $store.profile.bio)
-                    .font(.system(size: 22)).scrollContentBackground(.hidden)
-                    .padding(14).frame(height: 190)
-                    .background(Color.field, in: RoundedRectangle(cornerRadius: 16))
+                    .font(.system(size: 18)).scrollContentBackground(.hidden)
+                    .padding(8).frame(height: 106)
+                    .background(Color.field, in: RoundedRectangle(cornerRadius: 10))
                     .accessibilityIdentifier("bioField")
                     .onChange(of: store.profile.bio) { _, b in if b.count > 1000 { store.profile.bio = String(b.prefix(1000)) } }
             }
@@ -95,13 +95,13 @@ struct EditProfileView: View {
     }
 
     private var badges: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             heading("Badges")
             Button { store.profile.verified.toggle() } label: {
                 HStack(spacing: 14) {
                     Image(systemName: store.profile.verified ? "checkmark.square.fill" : "square")
-                        .font(.system(size: 30)).foregroundStyle(store.profile.verified ? Color.bloxBlue : Color(white: 0.6))
-                    Text("Verified (shown first, right after your name)").font(.system(size: 20)).multilineTextAlignment(.leading)
+                        .font(.system(size: 22)).foregroundStyle(store.profile.verified ? Color.bloxBlue : Color(white: 0.6))
+                    Text("Verified (shown first, right after your name)").font(.system(size: 16)).multilineTextAlignment(.leading)
                 }
             }
             .accessibilityIdentifier("verifiedToggle")
@@ -109,9 +109,9 @@ struct EditProfileView: View {
                 ForEach(Badge.allCases, id: \.self) { b in
                     let on = store.profile.badge == b
                     Button { store.profile.badge = b } label: {
-                        Text(b == .none ? "No badge" : b.rawValue.capitalized).font(.system(size: 21, weight: .semibold))
-                            .frame(maxWidth: .infinity, minHeight: 64)
-                            .background(on ? Color.bloxBlue : Color.field, in: RoundedRectangle(cornerRadius: 14))
+                        Text(b == .none ? "No badge" : b.rawValue.capitalized).font(.system(size: 16, weight: .semibold))
+                            .frame(maxWidth: .infinity, minHeight: 38)
+                            .background(on ? Color.bloxBlue : Color.field, in: RoundedRectangle(cornerRadius: 10))
                             .foregroundStyle(on ? .white : .primary)
                     }
                     .accessibilityIdentifier("badge-\(b.rawValue)")
@@ -122,7 +122,7 @@ struct EditProfileView: View {
     }
 
     private var picture: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             heading("Profile picture")
             caption("Drag and zoom the avatar to choose what the round picture shows everywhere.")
             Button { cropping = true } label: { grayButton("Adjust profile picture") }
@@ -132,7 +132,7 @@ struct EditProfileView: View {
     }
 
     private var avatarSource: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             heading("Avatar")
             caption("Copy the look of any Roblox user: their avatar picture and what they're wearing. Your name, Robux, counts and badges stay as they are.")
             HStack(spacing: 12) {
@@ -142,8 +142,8 @@ struct EditProfileView: View {
                     .accessibilityIdentifier("copyUserField")
                 Button(action: copy) {
                     Group { if copying { ProgressView().tint(.white) } else { Text("Copy") } }
-                        .font(.system(size: 20, weight: .semibold)).frame(width: 96, height: 66)
-                        .background(Color.bloxBlue, in: RoundedRectangle(cornerRadius: 16)).foregroundStyle(.white)
+                        .font(.system(size: 16, weight: .semibold)).frame(width: 76, height: 40)
+                        .background(Color.bloxBlue, in: RoundedRectangle(cornerRadius: 10)).foregroundStyle(.white)
                 }
                 .disabled(copying || copyName.trimmingCharacters(in: .whitespaces).isEmpty)
                 .accessibilityIdentifier("copyButton")
@@ -155,7 +155,7 @@ struct EditProfileView: View {
     }
 
     private var gamesLink: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             heading("Games")
             NavigationLink { GamesView() } label: {
                 grayButton("Games on your profile (\(store.profile.games.count))")
@@ -182,19 +182,19 @@ struct EditProfileView: View {
         }
     }
 
-    private func heading(_ s: String) -> some View { Text(s).font(.system(size: 26, weight: .bold)).padding(.top, 10) }
-    private func caption(_ s: String) -> some View { Text(s).font(.system(size: 19)).foregroundStyle(Color.faint) }
+    private func heading(_ s: String) -> some View { Text(s).font(.system(size: 17, weight: .bold)).padding(.top, 8) }
+    private func caption(_ s: String) -> some View { Text(s).font(.system(size: 14)).foregroundStyle(Color.faint) }
 
     private func labelled<C: View>(_ label: String, @ViewBuilder _ content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(label).font(.system(size: 19)).foregroundStyle(Color.faint).lineLimit(1)
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label).font(.system(size: 14)).foregroundStyle(Color.faint).lineLimit(1)
             content()
         }
     }
 
     private func grayButton(_ s: String) -> some View {
-        Text(s).font(.system(size: 20, weight: .semibold)).padding(.horizontal, 24).frame(minHeight: 60)
-            .background(Color.field, in: RoundedRectangle(cornerRadius: 14))
+        Text(s).font(.system(size: 15, weight: .semibold)).padding(.horizontal, 16).frame(minHeight: 40)
+            .background(Color.field, in: RoundedRectangle(cornerRadius: 10))
     }
 }
 

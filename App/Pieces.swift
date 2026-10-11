@@ -114,20 +114,20 @@ struct Headshot: View {
 struct Thumb: View {
     let url: String?
     var body: some View {
-        RoundedRectangle(cornerRadius: 12).fill(Color.field)
+        RoundedRectangle(cornerRadius: 8).fill(Color.field)
             .aspectRatio(1, contentMode: .fit)
             .overlay {
                 AsyncImage(url: url.flatMap(URL.init(string:))) { img in
                     img.resizable().scaledToFit().padding(10)
                 } placeholder: { EmptyView() }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 
 struct PriceLine: View {
     let price: Int?
-    var size: CGFloat = 17
+    var size: CGFloat = 14
     var body: some View {
         HStack(spacing: 5) {
             if let price, price > 0 { RobuxIcon(size: size * 1.05) }
@@ -141,15 +141,15 @@ struct ItemCard: View {
     let item: Item
     var showCreator = false
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 2) {
             Thumb(url: item.thumb)
-            Text(item.name).font(.system(size: 17, weight: .bold)).lineLimit(1).padding(.top, 6)
+            Text(item.name).font(.system(size: 14, weight: .bold)).lineLimit(1).padding(.top, 4)
             if showCreator {
                 HStack(spacing: 4) {
                     Text(item.creator).foregroundStyle(Color.faint).lineLimit(1)
                     if item.creator == "Roblox" { VerifiedBadge(size: 13) }
                 }
-                .font(.system(size: 15))
+                .font(.system(size: 13))
             }
             PriceLine(price: item.price)
         }
@@ -161,20 +161,20 @@ struct GameCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Thumb(url: game.icon)
-            Text(game.name).font(.system(size: 16, weight: .bold)).lineLimit(2, reservesSpace: true)
+            Text(game.name).font(.system(size: 14, weight: .bold)).lineLimit(2, reservesSpace: true)
             HStack(spacing: 4) {
                 Image(systemName: "person.2.fill")
                 Text("\(short(game.playing)) Playing")
             }
-            .font(.system(size: 13)).foregroundStyle(Color.faint)
+            .font(.system(size: 12)).foregroundStyle(Color.faint)
         }
     }
 }
 
 struct FieldStyle: ViewModifier {
     func body(content: Content) -> some View {
-        content.font(.system(size: 22)).padding(.horizontal, 20).frame(minHeight: 66)
-            .background(Color.field, in: RoundedRectangle(cornerRadius: 16))
+        content.font(.system(size: 18)).padding(.horizontal, 12).frame(minHeight: 40)
+            .background(Color.field, in: RoundedRectangle(cornerRadius: 10))
     }
 }
 
