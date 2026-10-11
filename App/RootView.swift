@@ -14,8 +14,10 @@ struct RootView: View {
     @State private var menu = false
     @State private var page: Page?
     @State private var profileOpen = false
-    @State private var profileSize = PresentationDetent.height(RootView.profileHalf)
-    static let profileHalf: CGFloat = 549
+    @State private var profileFull = false      // dragged up to fill the screen
+    @State private var profileAtTop = true
+    @GestureState private var profilePull: CGFloat = 0
+    static let profileHalfTop: CGFloat = 311
     @GestureState private var menuPull: CGFloat = 0
 
     var body: some View {
@@ -29,6 +31,11 @@ struct RootView: View {
                 }
                 .frame(maxHeight: .infinity)
                 bar
+            }
+            if profileOpen {
+                Color.black.opacity(0.55).ignoresSafeArea().onTapGesture(perform: closeProfile)
+                    .transition(.identity)
+                profileSheet.transition(.move(edge: .bottom)).zIndex(1)
             }
             if menu {
                 Color.black.opacity(0.55).ignoresSafeArea().onTapGesture(perform: closeMenu)
@@ -52,19 +59,6 @@ struct RootView: View {
             }
         }
         .background(Color.bg)
-        .sheet(isPresented: $profileOpen) {
-            NavigationStack {
-                ProfileView(full: profileSize == .large) {
-                    profileOpen = false
-                    tab = .me
-                }
-            }
-            .environmentObject(store)
-            .presentationDetents([.height(Self.profileHalf), .large], selection: $profileSize)
-            .presentationDragIndicator(.hidden)
-            .presentationCornerRadius(16)
-            .presentationBackground(Color.bg)
-        }
         .fullScreenCover(item: $page) { p in
             NavigationStack {
                 switch p {
@@ -81,11 +75,54 @@ struct RootView: View {
     private func open(_ p: Page?) {
         guard let p else { return }
         if p == .profile {
-            profileSize = .height(Self.profileHalf)
-            profileOpen = true
+            profileFull = false
+            profileAtTop = true
+            withAnimation(Self.sheetRise) { profileOpen = true }
         } else {
             page = p
         }
+    }
+
+    static let sheetRise = Animation.timingCurve(0.15, 0.85, 0.3, 1, duration: 0.22)
+    static let sheetSettle = Animation.spring(response: 0.28, dampingFraction: 0.92)
+
+    private func closeProfile() { withAnimation(.easeIn(duration: 0.18)) { profileOpen = false } }
+
+    private var profileSheet: some View {
+        GeometryReader { geo in
+            let rest = profileFull ? 0 : geo.safeAreaInsets.top + Self.profileHalfTop
+            NavigationStack {
+                ProfileView(full: profileFull, atTop: $profileAtTop, pulling: profilePull != 0, close: closeProfile) {
+                    closeProfile()
+                    tab = .me
+                }
+            }
+            .clipShape(UnevenRoundedRectangle(topLeadingRadius: 16, topTrailingRadius: 16))
+            .padding(.top, max(rest + profilePull, 0))
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 8)
+                    .updating($profilePull) { g, pull, _ in
+                        let down = g.translation.height > 0, vertical = abs(g.translation.height) > abs(g.translation.width)
+                        if !profileFull { pull = vertical ? g.translation.height : 0 }
+                        else if profileAtTop, down, vertical { pull = g.translation.height }
+                    }
+                    .onEnded { g in
+                        guard abs(g.translation.height) > abs(g.translation.width) else { return }
+                        let flick = g.predictedEndTranslation.height
+                        if !profileFull {
+                            if flick < -80 { withAnimation(Self.sheetSettle) { profileFull = true } }
+                            else if flick > 140 { closeProfile() }
+                        } else if profileAtTop, flick > 500 {
+                            closeProfile()
+                        } else if profileAtTop, flick > 120 {
+                            withAnimation(Self.sheetSettle) { profileFull = false }
+                        }
+                    }
+            )
+            .animation(Self.sheetSettle, value: profilePull == 0)
+        }
+        .ignoresSafeArea()
+        .environmentObject(store)
     }
 
     private func openMenu() { withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) { menu = true } }

@@ -3,8 +3,10 @@ import BloxKit
 
 struct ProfileView: View {
     @EnvironmentObject var store: Store
-    @Environment(\.dismiss) private var dismiss
-    var full = false                       // dragged up to the large size
+    var full = false                       // dragged up to fill the screen
+    @Binding var atTop: Bool
+    var pulling = false
+    var close: () -> Void = {}
     var editAppearance: () -> Void = {}
     @State private var editing = false
 
@@ -29,8 +31,13 @@ struct ProfileView: View {
                 .padding(.vertical, 28)
             }
             .padding(.horizontal, 24)
+            .background(GeometryReader { g in
+                Color.clear.preference(key: ScrollTop.self, value: g.frame(in: .named("profilePage")).minY)
+            })
         }
-        .scrollDisabled(!full)
+        .coordinateSpace(name: "profilePage")
+        .onPreferenceChange(ScrollTop.self) { atTop = $0 >= -1 }
+        .scrollDisabled(!full || pulling)
         .background(alignment: .top) { backdrop }
         .background(Color.bg)
         .overlay(alignment: .top) {
@@ -38,7 +45,7 @@ struct ProfileView: View {
         }
         .overlay(alignment: .topLeading) {
             if full {
-                Button { dismiss() } label: {
+                Button(action: close) {
                     Image(systemName: "xmark").font(.builder(16, .medium))
                         .frame(width: 36, height: 36).background(Color.pill.opacity(0.6), in: Circle())
                 }
@@ -133,6 +140,11 @@ struct ProfileView: View {
             }
         }
     }
+}
+
+struct ScrollTop: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
 struct FullProfileView: View {
