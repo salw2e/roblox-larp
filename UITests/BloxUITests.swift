@@ -365,11 +365,14 @@ final class BloxUITests: XCTestCase {
             sleep(1)
             field.tap()
         }
-        let old = (field.value as? String) ?? ""
-        if !old.isEmpty, old != field.placeholderValue {
-            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count))
+        for attempt in 0..<2 {
+            let old = (field.value as? String) ?? ""
+            if !old.isEmpty, old != field.placeholderValue {
+                field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count))
+            }
+            field.typeText(text)
+            if attempt == 0, (field.value as? String) != text { usleep(300_000) } else { break }
         }
-        field.typeText(text)
     }
 
     private func dismissKeyboard() {
