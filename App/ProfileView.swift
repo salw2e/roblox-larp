@@ -162,7 +162,7 @@ struct ProfileView: View {
             Text("Experiences").font(.builder(20, .bold)).frame(height: 24)
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .top), GridItem(.flexible(), alignment: .top)], spacing: 17) {
                 ForEach(store.profile.experiences) { g in
-                    Button { open(.game(g)) } label: { WideGameCard(game: g) }
+                    Button { open(.game(g)) } label: { WideGameCard(game: g, stats: true) }
                         .buttonStyle(PressStyle()).accessibilityIdentifier("profileGame")
                 }
             }
@@ -298,7 +298,7 @@ struct FullProfileView: View {
                         }
                     }
                     if !p.friendList.isEmpty {
-                        section("Friends (\(grouped(max(p.friends, p.friendList.count))))", page: .friends) {
+                        section("Friends (\(grouped(max(p.friends, p.friendList.count))))", seeAll: .friends) {
                             row {
                                 ForEach(p.friendList) { f in
                                     Button { open(.friend(f.id)) } label: {
@@ -378,15 +378,27 @@ struct FullProfileView: View {
         }
     }
 
-    private func section<C: View>(_ title: String, page: Page? = nil, @ViewBuilder _ content: () -> C) -> some View {
+    private func section<C: View>(_ title: String, page: Page? = nil, seeAll: Page? = nil, @ViewBuilder _ content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Button { if let page { open(page) } } label: {
-                HStack(spacing: 6) {
-                    Text(title).font(.builder(19, .bold))
-                    if page != nil { Icon("chevron-large-right", size: 16) }
+            HStack {
+                Button { if let page { open(page) } } label: {
+                    HStack(spacing: 6) {
+                        Text(title).font(.builder(19, .bold))
+                        if page != nil { Icon("chevron-large-right", size: 16) }
+                    }
+                }
+                .allowsHitTesting(page != nil)
+                if let seeAll {
+                    Spacer()
+                    Button { open(seeAll) } label: {
+                        HStack(spacing: 4) {
+                            Text("See All").font(.builder(14.5, .medium))
+                            Icon("arrow-large-right", size: 16)
+                        }
+                    }
+                    .padding(.trailing, 16)
                 }
             }
-            .allowsHitTesting(page != nil)
             content()
         }
         .padding(.leading, 16).padding(.top, 34)
