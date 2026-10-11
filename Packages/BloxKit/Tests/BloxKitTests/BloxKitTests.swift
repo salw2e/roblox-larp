@@ -316,6 +316,25 @@ final class ParseTests: XCTestCase {
         XCTAssertEqual(Parse.favorites(Data("{}".utf8)), [])
     }
 
+    func testFullProfileRows() throws {
+        let ids = Parse.friendIds(try fixture("friends-of"))
+        XCTAssertEqual(ids.first, 4371992339)
+        XCTAssertGreaterThan(ids.count, 10)
+        let names = Parse.users(try fixture("users-batch"))
+        XCTAssertEqual(Set(names.map(\.name)), ["Vurse", "JoeysFault"])
+        XCTAssertEqual(names.first { $0.name == "JoeysFault" }?.displayName, "Joey")
+        let groups = Parse.communities(try fixture("groups"))
+        XCTAssertEqual(groups.first?.name, "Badimo")
+        XCTAssertEqual(groups.first?.role, "Member")
+        XCTAssertGreaterThan(groups.first?.members ?? 0, 3_000_000)
+        XCTAssertTrue(groups.first?.verified == true)
+        XCTAssertFalse(groups.contains { $0.name.hasPrefix("[ Content Deleted") })
+        let badges = Parse.badges(try fixture("badges"))
+        XCTAssertFalse(badges.isEmpty)
+        XCTAssertTrue(badges.allSatisfy { !$0.name.isEmpty })
+        XCTAssertEqual(Parse.badges(Data("{}".utf8)), [])
+    }
+
     func testOutfitsAndShelves() {
         var p = Profile()
         p.wear(Item(id: 1, name: "Hat", price: 0, kind: 8))

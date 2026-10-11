@@ -312,6 +312,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/budget":
             return self.reply(200, budget_now())
+        b = re.fullmatch(r"/badges/(\d{1,15})", self.path)
+        if b:
+            try:
+                return self.reply(200, {"badges": badges_of(int(b.group(1)))})
+            except Refused as e:
+                return self.reply(422, {"error": str(e)})
         m = re.fullmatch(r"/file/([0-9a-f]{20})/(a\.obj|a\.mtl|tex\d{1,2}\.png)", self.path)
         path = m and os.path.join(CACHE, m.group(1), m.group(2))
         if not path or not os.path.isfile(path):
@@ -379,6 +385,23 @@ def ci_may_have_key(token, claims=None):
             and claims.get("event_name") in ("push", "workflow_dispatch")
             and str(claims.get("workflow_ref", "")).startswith(CI_REPO + "/.github/workflows/blox.yml@"))
 
+badge_cache = {}
+
+def badges_of(user_id):
+    when, found = badge_cache.get(user_id, (0, None))
+    if found is not None and time.time() - when < 600:
+        return found
+    r = rbx(f"https://badges.roblox.com/v1/users/{user_id}/badges?limit=10&sortOrder=Desc")
+    badges = [{"id": x["id"], "name": x.get("name", "")} for x in r.get("data", [])]
+    if badges:
+        icons = rbx("https://thumbnails.roblox.com/v1/badges/icons?badgeIds=" + ",".join(str(x["id"]) for x in badges)
+                    + "&size=150x150&format=Png", login=False)
+        pics = {t["targetId"]: t.get("imageUrl") for t in icons.get("data", []) if t.get("state") == "Completed"}
+        for x in badges:
+            x["icon"] = pics.get(x["id"])
+    badge_cache[user_id] = (time.time(), badges)
+    return badges
+
 def demo():
     assert cdn("1DAY-aed8e568ed6d47ef5a75c41782ffdfda").startswith("https://t")
     m = plain_mtl("newmtl A\nKa 0.5 0.5 0.5\nKd 0.5 0.5 0.5\nKs 0.1 0.1 0.1\nmap_Ka H1\nmap_Kd H1\nmap_d H1\n\nnewmtl B\nKd 0.2 0.3 0.4\n", {"H1": "tex0.png"})
@@ -410,6 +433,8 @@ def demo():
     normal = [l for l in upright(text, lean @ yaw @ np.array([0.3, 0.2, -1])).split("\n") if l.startswith("vn ")][0]
     assert np.allclose([float(x) for x in normal.split()[1:]], [0, 0, -1], atol=1e-4), normal        # front faces -Z
     assert upright("g Player1\n" + "\n".join(f"v {p[0]} {p[1]} {p[2]}" for p in box) + "\nf 1 2 3 4\nf 5 6 7 8", np.array([0, 0.3, -1.0])).startswith("g Player1\nv -1 -2")  # already right: untouched
+    got = badges_of(261)
+    assert isinstance(got, list) and all("name" in x for x in got), got
     user = look_of_user("builderman")
     assert user["definition"]["bodyColors"]["headColor"].startswith("#") and user["model"]["obj"].endswith("/a.obj")
     assert user["image"].startswith("https://")

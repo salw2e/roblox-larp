@@ -18,6 +18,42 @@ public enum Parse {
         return Person(id: r.id, name: r.name, displayName: r.displayName ?? r.name, bio: r.description ?? "", verified: r.hasVerifiedBadge ?? false)
     }
 
+    public static func users(_ data: Data) -> [User] {
+        struct R: Decodable { struct U: Decodable { let id: Int64; let name: String; let displayName: String?; let hasVerifiedBadge: Bool? }; let data: [U] }
+        return (try? JSONDecoder().decode(R.self, from: data))?.data.map {
+            User(id: $0.id, name: $0.name, displayName: $0.displayName ?? $0.name, verified: $0.hasVerifiedBadge ?? false)
+        } ?? []
+    }
+
+    public static func friendIds(_ data: Data) -> [Int64] {
+        struct R: Decodable { struct F: Decodable { let id: Int64 }; let data: [F] }
+        return (try? JSONDecoder().decode(R.self, from: data))?.data.map(\.id) ?? []
+    }
+
+    public struct Community: Equatable, Sendable {
+        public var id: Int64; public var name: String; public var members: Int; public var verified: Bool; public var role: String
+    }
+
+    public static func communities(_ data: Data) -> [Community] {
+        struct R: Decodable {
+            struct G: Decodable { let id: Int64; let name: String; let memberCount: Int?; let hasVerifiedBadge: Bool? }
+            struct Role: Decodable { let name: String? }
+            struct E: Decodable { let group: G; let role: Role? }
+            let data: [E]
+        }
+        return ((try? JSONDecoder().decode(R.self, from: data))?.data ?? [])
+            .filter { !$0.group.name.hasPrefix("[ Content Deleted") }
+            .map { Community(id: $0.group.id, name: $0.group.name, members: $0.group.memberCount ?? 0,
+                             verified: $0.group.hasVerifiedBadge ?? false, role: $0.role?.name ?? "") }
+    }
+
+    public struct Badge: Equatable, Sendable { public var id: Int64; public var name: String; public var icon: String? }
+
+    public static func badges(_ data: Data) -> [Badge] {
+        struct R: Decodable { struct B: Decodable { let id: Int64; let name: String; let icon: String? }; let badges: [B] }
+        return (try? JSONDecoder().decode(R.self, from: data))?.badges.map { Badge(id: $0.id, name: $0.name, icon: $0.icon) } ?? []
+    }
+
     public static func count(_ data: Data) -> Int? {
         struct R: Decodable { let count: Int }
         return (try? JSONDecoder().decode(R.self, from: data))?.count

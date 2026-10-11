@@ -308,6 +308,11 @@ final class Store: ObservableObject {
         return true
     }
 
+    func addFriendById(_ id: Int64) async throws -> Bool {
+        guard let p = Parse.person(try await Roblox.fetch(URL(string: "https://users.roblox.com/v1/users/\(id)")!)) else { throw BloxError.noUser }
+        return try await addFriend(p.name)
+    }
+
     // MARK: Keeping saved things fresh
 
     func refreshSaved() async {

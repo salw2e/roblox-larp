@@ -228,6 +228,36 @@ enum Roblox {
                              wearing: worn ?? [], favorites: favorites)
     }
 
+    struct More {
+        var friends: [(user: Parse.User, face: String?)] = []
+        var communities: [Parse.Community] = []
+        var groupIcons: [Int64: String] = [:]
+        var badges: [Parse.Badge] = []
+        var creations: [Game] = []
+    }
+
+    static func moreOf(_ id: Int64) async -> More {
+        async let friendData = try? fetch(URL(string: "https://friends.roblox.com/v1/users/\(id)/friends")!)
+        async let groupData = try? fetch(URL(string: "https://groups.roblox.com/v2/users/\(id)/groups/roles")!)
+        async let badgeData = try? fetch(URL(string: service + "/badges/\(id)")!)
+        async let gameData = try? fetch(url("https://games.roblox.com/v2/users/\(id)/games", ["limit": "10"]))
+        var more = More()
+        let ids = Array((await friendData).map(Parse.friendIds)?.prefix(10) ?? [])
+        if !ids.isEmpty, let body = try? JSONSerialization.data(withJSONObject: ["userIds": ids, "excludeBannedUsers": true]),
+           let named = try? await fetch(URL(string: "https://users.roblox.com/v1/users")!, post: body) {
+            let users = Parse.users(named), faces = await headshots(users.map(\.id))
+            more.friends = ids.compactMap { i in users.first { $0.id == i }.map { ($0, faces[$0.id]) } }
+        }
+        more.communities = Array((await groupData).map(Parse.communities)?.prefix(10) ?? [])
+        if !more.communities.isEmpty {
+            more.groupIcons = await pictures("https://thumbnails.roblox.com/v1/groups/icons",
+                                             ["groupIds": list(more.communities.map(\.id)), "size": "150x150", "format": "Png"])
+        }
+        more.badges = (await badgeData).map(Parse.badges) ?? []
+        more.creations = await complete((await gameData).map(Parse.favorites) ?? [])
+        return more
+    }
+
     static func complete(_ games: [Game]) async -> [Game] {
         guard !games.isEmpty else { return [] }
         let ids = games.map(\.id)

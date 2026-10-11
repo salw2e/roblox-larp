@@ -138,7 +138,14 @@ final class BloxUITests: XCTestCase {
         XCTAssertTrue(any("friendName").exists)
         sleep(6)
         shot("10a friend")
-        back()
+        app.buttons["friendFullProfile"].tap()
+        XCTAssertTrue(any("personName").waitForExistence(timeout: 5))
+        sleep(6)
+        shot("10a1 friend full")
+        app.buttons["personClose"].tap()
+        XCTAssertTrue(app.buttons["friendFullProfile"].waitForExistence(timeout: 5), "back to the sheet")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)).tap()      // above the sheet closes it
+        XCTAssertTrue(app.buttons["friendFullProfile"].waitForNonExistence(timeout: 3))
         app.buttons["homeSearch"].tap()
         let find = app.textFields["searchField"]
         XCTAssertTrue(find.waitForExistence(timeout: 5))

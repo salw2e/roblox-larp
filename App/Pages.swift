@@ -4,7 +4,7 @@ import BloxKit
 enum Page: Hashable, Identifiable {
     case profile, fullProfile, favorites, continuePlaying, friends, inventory, robux, transactions, notifications, trades
     case search, settings, momentsTab
-    case game(Game), item(Item), trade(Int), chat(Int64), friend(Int64), info(Info)
+    case game(Game), item(Item), trade(Int), chat(Int64), friend(Int64), person(Int64), info(Info)
     var id: String { "\(self)" }
 }
 
