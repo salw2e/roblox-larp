@@ -15,13 +15,13 @@ cd Packages/BloxKit && swift test
 ## the app
 
 <picture>
-  <source media="(min-width: 768px)" srcset="shots/app-row.webp?6004">
-  <img src="shots/app-grid.webp?6004" width="100%" alt="menu, buy robux">
+  <source media="(min-width: 768px)" srcset="shots/main-row.webp">
+  <img src="shots/main-grid.webp" width="100%" alt="menu, buy robux">
 </picture>
 
 ## the editor
 
 <picture>
-  <source media="(min-width: 768px)" srcset="shots/editor-row.webp?6004">
-  <img src="shots/editor-grid.webp?6004" width="100%" alt="edit profile, skin">
+  <source media="(min-width: 768px)" srcset="shots/edit-row.webp">
+  <img src="shots/edit-grid.webp" width="100%" alt="edit profile, skin">
 </picture>
