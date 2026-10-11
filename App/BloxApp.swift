@@ -12,6 +12,8 @@ struct BloxApp: App {
         bar.backgroundColor = UIColor(Color.bg)
         bar.shadowColor = .clear
         bar.titleTextAttributes = [.font: UIFont(name: "BuilderSans-Bold", size: 17) ?? .boldSystemFont(ofSize: 17), .foregroundColor: UIColor(Color.ink)]
+        bar.backButtonAppearance.normal.titleTextAttributes = [.foregroundColor: UIColor.clear]
+        bar.backButtonAppearance.highlighted.titleTextAttributes = [.foregroundColor: UIColor.clear]
         UINavigationBar.appearance().standardAppearance = bar
         UINavigationBar.appearance().scrollEdgeAppearance = bar
     }

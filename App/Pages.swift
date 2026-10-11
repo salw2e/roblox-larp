@@ -12,7 +12,6 @@ extension View {
         background(Color.bg)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarRole(.editor)
             .toolbarBackground(Color.bg, for: .navigationBar)
     }
 }
