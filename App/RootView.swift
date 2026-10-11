@@ -60,7 +60,7 @@ struct RootView: View {
                 Button { tab = t } label: {
                     VStack(spacing: 5) {
                         icon(t).frame(height: 30)
-                        Text(t.rawValue).font(.system(size: 14, weight: .medium))
+                        Text(t.rawValue).font(.builder(14, .medium))
                     }
                     .foregroundStyle(tab == t ? Color.white : Color.faint)
                     .frame(maxWidth: .infinity)
@@ -75,9 +75,9 @@ struct RootView: View {
     @ViewBuilder
     private func icon(_ t: MainTab) -> some View {
         switch t {
-        case .home: Image(systemName: tab == t ? "house.fill" : "house").font(.system(size: 22))
-        case .moments: Image(systemName: "play.square").font(.system(size: 22)).rotationEffect(.degrees(-10))
-        case .chat: Image(systemName: "text.bubble").font(.system(size: 22))
+        case .home: Icon("house", size: 28, filled: tab == t)
+        case .moments: Icon("moments", size: 28, filled: tab == t)
+        case .chat: Icon("speech-bubble-align-center", size: 28, filled: tab == t)
         case .me: Headshot(image: store.avatar, crop: store.profile.crop, size: 30)
         }
     }
@@ -124,15 +124,15 @@ struct HomeView: View {
     private var topBar: some View {
         HStack(spacing: 22) {
             Button(action: openMenu) {
-                Image(systemName: "line.3.horizontal").font(.system(size: 24))
+                Icon("three-bars-horizontal", size: 28)
                     .overlay(alignment: .topTrailing) { Circle().fill(Color.bloxBlue).frame(width: 9, height: 9).offset(x: 5, y: -4) }
             }
             .accessibilityIdentifier("menuButton")
-            Wordmark(size: 24).padding(.leading, -8)
+            Wordmark(size: 20).padding(.leading, -8)
             Spacer()
-            Image(systemName: "magnifyingglass").font(.system(size: 23))
+            Icon("magnifying-glass", size: 26)
             RobuxIcon(size: 22)
-            Image(systemName: "bell").font(.system(size: 23))
+            Icon("bell", size: 26)
                 .overlay(alignment: .topTrailing) { CountBubble(n: store.profile.notifications, size: 19).offset(x: 10, y: -10) }
         }
         .foregroundStyle(.white)
@@ -145,7 +145,7 @@ struct HomeView: View {
                 let on = (t == "Charts") == charts
                 Button { charts = t == "Charts" } label: {
                     VStack(spacing: 12) {
-                        Text(t).font(.system(size: 16)).foregroundStyle(on ? .white : Color.faint)
+                        Text(t).font(.builder(16)).foregroundStyle(on ? .white : Color.faint)
                         Rectangle().fill(on ? Color.white : Color(white: 0.25)).frame(height: on ? 1.5 : 1)
                     }
                 }
@@ -160,7 +160,7 @@ struct HomeView: View {
             Button { open(.profile) } label: {
                 HStack(spacing: 14) {
                     Headshot(image: store.avatar, crop: store.profile.crop, size: 38)
-                    Text(store.profile.displayName).font(.system(size: 21, weight: .bold))
+                    Text(store.profile.displayName).font(.builder(21, .bold))
                 }
             }
             .accessibilityIdentifier("homeName")
@@ -185,9 +185,9 @@ struct HomeView: View {
                 Button { open(.friends) } label: {
                     VStack(spacing: 8) {
                         Circle().fill(Color.field).frame(width: 112, height: 112)
-                            .overlay(Image(systemName: "person.badge.plus").font(.system(size: 36, weight: .light)))
+                            .overlay(Icon("person-plus", size: 46))
                             .overlay(alignment: .topTrailing) { CountBubble(n: store.profile.requests, size: 22).offset(x: -4, y: 6) }
-                        Text("Add Friends").font(.system(size: 14, weight: .semibold))
+                        Text("Add Friends").font(.builder(14, .semibold))
                     }
                     .frame(width: 114)
                 }
@@ -200,8 +200,8 @@ struct HomeView: View {
                                         .overlay(Circle().stroke(Color.bg, lineWidth: 3)).offset(x: -6, y: -6)
                                 }
                             }
-                        Text(f.displayName).font(.system(size: 14, weight: .semibold)).lineLimit(1).padding(.top, 6)
-                        if !f.status.isEmpty { Text(f.status).font(.system(size: 13)).foregroundStyle(Color.faint).lineLimit(1) }
+                        Text(f.displayName).font(.builder(14, .semibold)).lineLimit(1).padding(.top, 6)
+                        if !f.status.isEmpty { Text(f.status).font(.builder(13)).foregroundStyle(Color.faint).lineLimit(1) }
                     }
                     .frame(width: 114)
                     .accessibilityIdentifier("homeFriend")
@@ -230,7 +230,7 @@ struct HomeView: View {
 
     private func section<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(title).font(.system(size: 22, weight: .bold))
+            Text(title).font(.builder(22, .bold))
             content()
         }
         .padding(.top, 30)
@@ -267,8 +267,8 @@ struct MenuView: View {
                     HStack(spacing: 18) {
                         Headshot(image: store.avatar, crop: store.profile.crop, size: 64)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(store.profile.displayName).font(.system(size: 17, weight: .bold))
-                            Text("@\(store.profile.username)").font(.system(size: 16)).foregroundStyle(Color(white: 0.85))
+                            Text(store.profile.displayName).font(.builder(17, .bold))
+                            Text("@\(store.profile.username)").font(.builder(16)).foregroundStyle(Color(white: 0.85))
                         }
                     }
                 }
@@ -277,22 +277,22 @@ struct MenuView: View {
                 robuxCard.padding(.top, 14)
                 VStack(alignment: .leading, spacing: 0) {
                     row("bookmark", "Favorites", page: .favorites)
-                    row("clock.arrow.circlepath", "Continue Playing")
-                    row("person.2", "Friends", count: store.profile.friendsBadge, page: .friends)
-                    row("person.3", "Communities")
+                    row("clock-spin-reverse", "Continue Playing")
+                    row("two-people", "Friends", count: store.profile.friendsBadge, page: .friends)
+                    row("three-people", "Communities")
                     row("backpack", "Inventory", page: .inventory)
-                    row("arrow.left.arrow.right", "Trades")
+                    row("hand-two-arrows-horizontal", "Trades")
                     row("envelope", "Messages", count: store.profile.messages)
-                    row("p.square", "Roblox Plus")
-                    row("gearshape", "Settings")
-                    row("lock.shield", "Help & Safety")
+                    row("roblox-plus", "Roblox Plus")
+                    row("gear", "Settings")
+                    row("shield-lock", "Help & Safety")
                     Divider().overlay(Color(white: 0.25)).padding(.vertical, 8)
-                    row("play.square", "Moments")
-                    row("graduationcap", "Learn")
-                    row("hammer", "Create")
+                    row("moments", "Moments")
+                    row("person-graduate", "Learn")
+                    row("studio", "Create")
                 }
                 .padding(.top, 14)
-                Text("Switch Accounts").font(.system(size: 17)).frame(maxWidth: .infinity, minHeight: 50)
+                Text("Switch Accounts").font(.builder(17)).frame(maxWidth: .infinity, minHeight: 50)
                     .background(Color.field, in: RoundedRectangle(cornerRadius: 10))
                     .padding(.top, 14).padding(.bottom, 20)
             }
@@ -307,22 +307,22 @@ struct MenuView: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 RobuxIcon(size: 20)
-                Text(grouped(store.profile.robux)).font(.system(size: 17, weight: .bold)).accessibilityIdentifier("menuRobux")
+                Text(grouped(store.profile.robux)).font(.builder(17, .bold)).accessibilityIdentifier("menuRobux")
                 Spacer()
-                Text("Buy Robux").font(.system(size: 14)).padding(.horizontal, 10).frame(height: 36)
+                Text("Buy Robux").font(.builder(14)).padding(.horizontal, 10).frame(height: 36)
                     .background(Color.field, in: RoundedRectangle(cornerRadius: 8))
             }
             .padding(.horizontal, 14).frame(height: 66)
             Divider().overlay(Color(white: 0.25))
             HStack(spacing: 18) {
-                Image(systemName: "p.square").font(.system(size: 18))
+                Icon("roblox-plus", size: 22)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("More fun for less Robux.")
                     Text("Subscribe to Roblox Plus.")
                 }
-                .font(.system(size: 13))
+                .font(.builder(13))
                 Spacer()
-                Image(systemName: "chevron.right")
+                Icon("chevron-large-right", size: 20)
             }
             .padding(.horizontal, 14).frame(height: 64)
         }
@@ -332,8 +332,8 @@ struct MenuView: View {
     private func row(_ icon: String, _ title: String, count: Int = 0, page: Page? = nil) -> some View {
         Button { if page != nil { open(page) } } label: {
             HStack(spacing: 22) {
-                Image(systemName: icon).font(.system(size: 19)).frame(width: 26)
-                Text(title).font(.system(size: 17, weight: .bold))
+                Icon(icon, size: 24).frame(width: 26)
+                Text(title).font(.builder(17, .bold))
                 Spacer()
                 CountBubble(n: count, size: 22)
             }
@@ -349,8 +349,8 @@ struct MenuView: View {
 struct MomentsView: View {
     var body: some View {
         VStack(spacing: 14) {
-            Image(systemName: "play.square").font(.system(size: 54)).rotationEffect(.degrees(-10))
-            Text("Moments").font(.system(size: 22, weight: .bold))
+            Icon("moments", size: 60)
+            Text("Moments").font(.builder(22, .bold))
             Text("Short clips from experiences show up here.").foregroundStyle(Color.faint)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -370,9 +370,9 @@ struct ChatView: View {
                     HStack(spacing: 14) {
                         RemoteCircle(url: f.headshot, size: 52)
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(f.displayName).font(.system(size: 17, weight: .semibold))
+                            Text(f.displayName).font(.builder(17, .semibold))
                             Text(f.status.isEmpty ? (f.online ? "Online" : "Offline") : f.status)
-                                .font(.system(size: 14)).foregroundStyle(Color.faint).lineLimit(1)
+                                .font(.builder(14)).foregroundStyle(Color.faint).lineLimit(1)
                         }
                     }
                     .listRowBackground(Color.bg)
@@ -408,13 +408,13 @@ struct FriendsListView: View {
     @EnvironmentObject var store: Store
     var body: some View {
         List {
-            Section { Text("\(grouped(store.profile.friends)) Friends").font(.system(size: 17, weight: .semibold)) }
+            Section { Text("\(grouped(store.profile.friends)) Friends").font(.builder(17, .semibold)) }
             ForEach(store.profile.friendList) { f in
                 HStack(spacing: 14) {
                     RemoteCircle(url: f.headshot, size: 48)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(f.displayName).font(.system(size: 17, weight: .semibold))
-                        Text("@\(f.name)").font(.system(size: 14)).foregroundStyle(Color.faint)
+                        Text(f.displayName).font(.builder(17, .semibold))
+                        Text("@\(f.name)").font(.builder(14)).foregroundStyle(Color.faint)
                     }
                     Spacer()
                     if f.online { Circle().fill(Color.green).frame(width: 12, height: 12) }

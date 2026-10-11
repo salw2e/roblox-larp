@@ -51,9 +51,9 @@ struct EditProfileView: View {
     private var titleBar: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Edit — Profile").font(.system(size: 21, weight: .bold))
+                Text("Edit — Profile").font(.builder(21, .bold))
                 Spacer()
-                Button { dismiss() } label: { Image(systemName: "xmark").font(.system(size: 19, weight: .medium)) }
+                Button { dismiss() } label: { Image(systemName: "xmark").font(.builder(19, .medium)) }
                     .accessibilityIdentifier("closeEdit")
             }
             .padding(.horizontal, 22).padding(.vertical, 14)
@@ -90,7 +90,7 @@ struct EditProfileView: View {
             heading("Bio")
             labelled("About (up to 1,000 characters)") {
                 TextEditor(text: $store.profile.bio)
-                    .font(.system(size: 18)).scrollContentBackground(.hidden)
+                    .font(.builder(18)).scrollContentBackground(.hidden)
                     .padding(8).frame(height: 106)
                     .background(Color.field, in: RoundedRectangle(cornerRadius: 10))
                     .accessibilityIdentifier("bioField")
@@ -106,8 +106,8 @@ struct EditProfileView: View {
             Button { store.profile.verified.toggle() } label: {
                 HStack(spacing: 14) {
                     Image(systemName: store.profile.verified ? "checkmark.square.fill" : "square")
-                        .font(.system(size: 22)).foregroundStyle(store.profile.verified ? Color.bloxBlue : Color(white: 0.6))
-                    Text("Verified (shown first, right after your name)").font(.system(size: 16)).multilineTextAlignment(.leading)
+                        .font(.builder(22)).foregroundStyle(store.profile.verified ? Color.bloxBlue : Color(white: 0.6))
+                    Text("Verified (shown first, right after your name)").font(.builder(16)).multilineTextAlignment(.leading)
                 }
             }
             .accessibilityIdentifier("verifiedToggle")
@@ -115,7 +115,7 @@ struct EditProfileView: View {
                 ForEach(Badge.allCases, id: \.self) { b in
                     let on = store.profile.badge == b
                     Button { store.profile.badge = b } label: {
-                        Text(b == .none ? "No badge" : b.rawValue.capitalized).font(.system(size: 16, weight: .semibold))
+                        Text(b == .none ? "No badge" : b.rawValue.capitalized).font(.builder(16, .semibold))
                             .frame(maxWidth: .infinity, minHeight: 38)
                             .background(on ? Color.bloxBlue : Color.field, in: RoundedRectangle(cornerRadius: 10))
                             .foregroundStyle(on ? .white : .primary)
@@ -148,7 +148,7 @@ struct EditProfileView: View {
                     .accessibilityIdentifier("copyUserField")
                 Button(action: copy) {
                     Group { if copying { ProgressView().tint(.white) } else { Text("Copy") } }
-                        .font(.system(size: 16, weight: .semibold)).frame(width: 76, height: 40)
+                        .font(.builder(16, .semibold)).frame(width: 76, height: 40)
                         .background(Color.bloxBlue, in: RoundedRectangle(cornerRadius: 10)).foregroundStyle(.white)
                 }
                 .disabled(copying || copyName.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -171,7 +171,7 @@ struct EditProfileView: View {
                     .accessibilityIdentifier("friendUserField")
                 Button(action: addFriend) {
                     Group { if addingFriend { ProgressView().tint(.white) } else { Text("Add") } }
-                        .font(.system(size: 16, weight: .semibold)).frame(width: 76, height: 40)
+                        .font(.builder(16, .semibold)).frame(width: 76, height: 40)
                         .background(Color.bloxBlue, in: RoundedRectangle(cornerRadius: 10)).foregroundStyle(.white)
                 }
                 .disabled(addingFriend || friendName.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -182,8 +182,8 @@ struct EditProfileView: View {
                 HStack(spacing: 10) {
                     RemoteCircle(url: f.headshot, size: 40)
                     VStack(alignment: .leading, spacing: 4) {
-                        TextField("Name", text: $f.displayName).font(.system(size: 16, weight: .semibold))
-                        TextField("Status line (the game they're in)", text: $f.status).font(.system(size: 14))
+                        TextField("Name", text: $f.displayName).font(.builder(16, .semibold))
+                        TextField("Status line (the game they're in)", text: $f.status).font(.builder(14))
                     }
                     Toggle("", isOn: $f.online).labelsHidden().tint(.green)
                     Button { store.profile.friendList.removeAll { $0.id == f.id } } label: {
@@ -258,18 +258,18 @@ struct EditProfileView: View {
         }
     }
 
-    private func heading(_ s: String) -> some View { Text(s).font(.system(size: 17, weight: .bold)).padding(.top, 8) }
-    private func caption(_ s: String) -> some View { Text(s).font(.system(size: 14)).foregroundStyle(Color.faint) }
+    private func heading(_ s: String) -> some View { Text(s).font(.builder(17, .bold)).padding(.top, 8) }
+    private func caption(_ s: String) -> some View { Text(s).font(.builder(14)).foregroundStyle(Color.faint) }
 
     private func labelled<C: View>(_ label: String, @ViewBuilder _ content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(label).font(.system(size: 14)).foregroundStyle(Color.faint).lineLimit(1)
+            Text(label).font(.builder(14)).foregroundStyle(Color.faint).lineLimit(1)
             content()
         }
     }
 
     private func grayButton(_ s: String) -> some View {
-        Text(s).font(.system(size: 15, weight: .semibold)).padding(.horizontal, 16).frame(minHeight: 40)
+        Text(s).font(.builder(15, .semibold)).padding(.horizontal, 16).frame(minHeight: 40)
             .background(Color.field, in: RoundedRectangle(cornerRadius: 10))
     }
 }
@@ -287,7 +287,7 @@ struct CropView: View {
 
     var body: some View {
         VStack(spacing: 28) {
-            Text("Adjust profile picture").font(.system(size: 26, weight: .bold)).padding(.top, 30)
+            Text("Adjust profile picture").font(.builder(26, .bold)).padding(.top, 30)
             Headshot(image: store.avatar, crop: store.profile.crop, size: size)
                 .overlay(Circle().stroke(Color(white: 0.8), lineWidth: 2))
                 .contentShape(Circle())
@@ -301,7 +301,7 @@ struct CropView: View {
                     .frame(maxWidth: .infinity, minHeight: 56).background(Color.bloxBlue, in: RoundedRectangle(cornerRadius: 14))
                     .foregroundStyle(.white).accessibilityIdentifier("cropDone")
             }
-            .font(.system(size: 20, weight: .semibold))
+            .font(.builder(20, .semibold))
             .padding(.horizontal, 22)
             Spacer()
         }

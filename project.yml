@@ -29,6 +29,7 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: { UIColorName: LaunchBackground }
+        UIAppFonts: [BuilderSans-Regular.otf, BuilderSans-Medium.otf, BuilderSans-Bold.otf, BuilderSans-ExtraBold.otf, BuilderIcons-Regular.ttf, BuilderIcons-Filled.ttf]
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         ITSAppUsesNonExemptEncryption: false
   BloxUITests:

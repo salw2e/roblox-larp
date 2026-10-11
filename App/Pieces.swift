@@ -9,38 +9,46 @@ extension Color {
     static let faint = Color(white: 0.68)
 }
 
-struct RobuxIcon: View {
-    var size: CGFloat = 16
+struct Icon: View {
+    let name: String
+    var size: CGFloat
+    var filled: Bool
+
+    init(_ name: String, size: CGFloat = 22, filled: Bool = false) {
+        self.name = name; self.size = size; self.filled = filled
+    }
+
     var body: some View {
-        ZStack {
-            Hexagon().stroke(lineWidth: size * 0.13)
-            RoundedRectangle(cornerRadius: size * 0.05).stroke(lineWidth: size * 0.13).frame(width: size * 0.36, height: size * 0.36)
-        }
-        .frame(width: size, height: size)
+        Text(name).font(.custom(filled ? "BuilderIcons-Filled" : "BuilderIcons-Regular", fixedSize: size))
+            .lineLimit(1).fixedSize().accessibilityHidden(true)
     }
 }
 
-struct Hexagon: Shape {
-    func path(in r: CGRect) -> Path {
-        Path { p in
-            for i in 0..<6 {
-                let a = Double(i) * .pi / 3 - .pi / 2
-                let pt = CGPoint(x: r.midX + r.width / 2 * cos(a), y: r.midY + r.height / 2 * sin(a))
-                i == 0 ? p.move(to: pt) : p.addLine(to: pt)
-            }
-            p.closeSubpath()
+extension Font {
+    static func builder(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
+        let face: String
+        switch weight {
+        case .black, .heavy: face = "BuilderSans-ExtraBold"
+        case .bold, .semibold: face = "BuilderSans-Bold"
+        case .medium: face = "BuilderSans-Medium"
+        default: face = "BuilderSans-Regular"
         }
+        return .custom(face, fixedSize: size)
     }
+}
+
+struct RobuxIcon: View {
+    var size: CGFloat = 16
+    var body: some View { Icon("robux", size: size * 1.2) }
 }
 
 struct VerifiedBadge: View {
     var size: CGFloat = 22
     var body: some View {
-        RoundedRectangle(cornerRadius: size * 0.22)
-            .fill(Color.bloxBlue)
-            .frame(width: size, height: size)
-            .overlay(Image(systemName: "checkmark").font(.system(size: size * 0.55, weight: .black)).foregroundStyle(.white))
-            .rotationEffect(.degrees(-8))
+        ZStack {
+            Icon("verified-backplate", size: size * 1.2, filled: true).foregroundStyle(Color.bloxBlue)
+            Icon("verified-check", size: size * 1.2, filled: true).foregroundStyle(.white)
+        }
     }
 }
 
@@ -50,21 +58,8 @@ struct MemberBadge: View {
     var body: some View {
         switch badge {
         case .none: EmptyView()
-        case .plus: Image(systemName: "plus.square").font(.system(size: size * 0.95, weight: .semibold)).foregroundStyle(Color(white: 0.85))
-        case .pro:
-            ZStack(alignment: .bottomTrailing) {
-                RoundedRectangle(cornerRadius: size * 0.08).stroke(lineWidth: size * 0.13)
-                Path { p in
-                    p.move(to: CGPoint(x: size * 0.3, y: size * 0.78))
-                    p.addLine(to: CGPoint(x: size * 0.3, y: size * 0.3))
-                    p.addLine(to: CGPoint(x: size * 0.7, y: size * 0.3))
-                    p.addLine(to: CGPoint(x: size * 0.7, y: size * 0.62))
-                    p.addLine(to: CGPoint(x: size * 0.5, y: size * 0.62))
-                }
-                .stroke(style: StrokeStyle(lineWidth: size * 0.12))
-            }
-            .frame(width: size, height: size)
-            .foregroundStyle(Color(white: 0.85))
+        case .plus: Icon("roblox-plus", size: size * 1.2).foregroundStyle(Color(white: 0.85))
+        case .pro: Icon("premium", size: size * 1.2).foregroundStyle(Color(white: 0.85))
         }
     }
 }
@@ -74,7 +69,7 @@ struct NameLine: View {
     var font: CGFloat = 30
     var body: some View {
         HStack(spacing: 8) {
-            Text(profile.displayName).font(.system(size: font, weight: .bold)).lineLimit(1).minimumScaleFactor(0.6)
+            Text(profile.displayName).font(.builder(font, .bold)).lineLimit(1).minimumScaleFactor(0.6)
                 .accessibilityIdentifier("displayName")
             if profile.verified { VerifiedBadge(size: font * 0.75) }
             MemberBadge(badge: profile.badge, size: font * 0.75)
@@ -88,7 +83,7 @@ struct AvatarPicture: View {
         if let image {
             Image(uiImage: image).resizable().scaledToFit().accessibilityIdentifier("avatarImage")
         } else {
-            Image(systemName: "figure.stand").resizable().scaledToFit().padding(40).foregroundStyle(Color(white: 0.3))
+            Icon("person-standing", size: 150).foregroundStyle(Color(white: 0.3)).frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }
@@ -105,7 +100,7 @@ struct Headshot: View {
                     .frame(width: size * crop.scale, height: size * crop.scale)
                     .offset(x: crop.x * size, y: crop.y * size)
             } else {
-                Image(systemName: "person.fill").font(.system(size: size * 0.5)).foregroundStyle(.white)
+                Icon("person", size: size * 0.6, filled: true).foregroundStyle(.white)
             }
         }
         .frame(width: size, height: size)
@@ -133,7 +128,7 @@ struct PriceLine: View {
     var body: some View {
         HStack(spacing: 5) {
             if let price, price > 0 { RobuxIcon(size: size * 1.05) }
-            Text(priceText(price)).font(.system(size: size, weight: .medium))
+            Text(priceText(price)).font(.builder(size, .medium))
         }
         .foregroundStyle(.primary)
     }
@@ -145,13 +140,13 @@ struct ItemCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Thumb(url: item.thumb)
-            Text(item.name).font(.system(size: 14, weight: .bold)).lineLimit(1).padding(.top, 4)
+            Text(item.name).font(.builder(14, .bold)).lineLimit(1).padding(.top, 4)
             if showCreator {
                 HStack(spacing: 4) {
                     Text(item.creator).foregroundStyle(Color.faint).lineLimit(1)
                     if item.showsCreatorCheck { VerifiedBadge(size: 13) }
                 }
-                .font(.system(size: 13))
+                .font(.builder(13))
             }
             PriceLine(price: item.price)
         }
@@ -163,19 +158,19 @@ struct GameCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Thumb(url: game.icon)
-            Text(game.name).font(.system(size: 14, weight: .bold)).lineLimit(2, reservesSpace: true)
+            Text(game.name).font(.builder(14, .bold)).lineLimit(2, reservesSpace: true)
             HStack(spacing: 4) {
-                Image(systemName: "person.2.fill")
+                Icon("two-people", size: 15, filled: true)
                 Text("\(short(game.playing)) Playing")
             }
-            .font(.system(size: 12)).foregroundStyle(Color.faint)
+            .font(.builder(12)).foregroundStyle(Color.faint)
         }
     }
 }
 
 struct FieldStyle: ViewModifier {
     func body(content: Content) -> some View {
-        content.font(.system(size: 18)).padding(.horizontal, 12).frame(minHeight: 40)
+        content.font(.builder(18)).padding(.horizontal, 12).frame(minHeight: 40)
             .background(Color.field, in: RoundedRectangle(cornerRadius: 10))
     }
 }
@@ -210,12 +205,12 @@ struct WideGameCard: View {
                         placeholder: { EmptyView() }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 8))
-            Text(game.name).font(.system(size: 16, weight: .bold)).lineLimit(1).padding(.top, 6)
+            Text(game.name).font(.builder(16, .bold)).lineLimit(1).padding(.top, 6)
             HStack(spacing: 5) {
-                Image(systemName: "hand.thumbsup.fill")
+                Icon("thumb-up", size: 18, filled: true)
                 Text(game.rating.map { "\($0)% Rating" } ?? "\(short(game.playing)) Playing")
             }
-            .font(.system(size: 15)).foregroundStyle(Color.faint)
+            .font(.builder(15)).foregroundStyle(Color.faint)
         }
     }
 }
@@ -227,7 +222,7 @@ struct RemoteCircle: View {
         Circle().fill(Color.tile)
             .overlay {
                 AsyncImage(url: url.flatMap(URL.init(string:))) { $0.resizable().scaledToFill() } placeholder: {
-                    Image(systemName: "person.fill").font(.system(size: size * 0.4)).foregroundStyle(Color.faint)
+                    Icon("person", size: size * 0.5, filled: true).foregroundStyle(Color.faint)
                 }
             }
             .frame(width: size, height: size)
@@ -236,18 +231,9 @@ struct RemoteCircle: View {
 }
 
 struct Wordmark: View {
-    var size: CGFloat = 25
+    var size: CGFloat = 20
     var body: some View {
-        HStack(spacing: size * 0.04) {
-            Text("R")
-            RoundedRectangle(cornerRadius: size * 0.08)
-                .frame(width: size * 0.68, height: size * 0.68)
-                .overlay(Rectangle().fill(Color.bg).frame(width: size * 0.2, height: size * 0.2))
-                .rotationEffect(.degrees(-15))
-            Text("BLOX")
-        }
-        .font(.system(size: size, weight: .black, design: .default).width(.expanded))
-        .foregroundStyle(.white)
+        Image("wordmark").resizable().scaledToFit().frame(height: size).accessibilityLabel("Roblox")
     }
 }
 
@@ -256,7 +242,7 @@ struct CountBubble: View {
     var size: CGFloat = 22
     var body: some View {
         if n > 0 {
-            Text(n > 99 ? "99+" : "\(n)").font(.system(size: size * 0.62, weight: .semibold)).foregroundStyle(.white)
+            Text(n > 99 ? "99+" : "\(n)").font(.builder(size * 0.62, .semibold)).foregroundStyle(.white)
                 .padding(.horizontal, size * 0.28).frame(minWidth: size, minHeight: size)
                 .background(Color.bloxBlue, in: Capsule())
         }

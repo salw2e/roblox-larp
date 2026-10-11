@@ -13,6 +13,7 @@ struct BloxApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(store)
+                .environment(\.font, .builder(17))
                 .preferredColorScheme(.dark)
                 .tint(.white)
         }

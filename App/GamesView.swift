@@ -32,7 +32,7 @@ struct GamesView: View {
                             row(game)
                             Spacer()
                             Image(systemName: added ? "checkmark.circle.fill" : "plus.circle")
-                                .font(.system(size: 24)).foregroundStyle(Color.bloxBlue)
+                                .font(.builder(24)).foregroundStyle(Color.bloxBlue)
                         }
                     }
                     .accessibilityIdentifier("addGame")
@@ -47,8 +47,8 @@ struct GamesView: View {
         HStack(spacing: 12) {
             Thumb(url: g.icon).frame(width: 56)
             VStack(alignment: .leading, spacing: 2) {
-                Text(g.name).font(.system(size: 17, weight: .semibold)).lineLimit(2)
-                Text("\(short(g.playing)) Playing").font(.system(size: 14)).foregroundStyle(Color.faint)
+                Text(g.name).font(.builder(17, .semibold)).lineLimit(2)
+                Text("\(short(g.playing)) Playing").font(.builder(14)).foregroundStyle(Color.faint)
             }
         }
     }
