@@ -552,85 +552,189 @@ struct ItemPage: View {
 struct GamePage: View {
     @EnvironmentObject var store: Store
     let game: Game
+    var close: () -> Void = {}
+    var open: (Page) -> Void = { _ in }
     @State private var info: GameInfo?
     @State private var filled: Game?
+    @State private var slides: [String] = []
+    @State private var maturity: String?
+    @State private var slide = 0
     @State private var loaded = false
     @State private var joining = false
+    @State private var notify = false
+    @GestureState private var pull: CGFloat = 0
+    private static let sheet = Color.rgb(25, 26, 30)
 
     var body: some View {
         let shown = filled ?? game
-        let favourite = store.profile.games.contains { $0.id == game.id }
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                RoundedRectangle(cornerRadius: 8).fill(Color.tile).aspectRatio(16 / 9, contentMode: .fit)
-                    .overlay { RemoteImage(url: shown.wide ?? shown.icon, fill: shown.wide != nil) }
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                Text(game.name).font(.builder(20, .bold)).padding(.top, 16)
+        VStack(spacing: 0) {
+            Capsule().fill(Color.rgb(58, 59, 66)).frame(width: 39, height: 4)
+                .frame(maxWidth: .infinity).frame(height: 22).contentShape(Rectangle())
+                .accessibilityIdentifier("gameHandle")
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    header(shown)
+                    pictures(shown).padding(.top, 28)
+                    chips(shown).padding(.top, 22)
+                    if let info {
+                        Text("About").font(.builder(20, .bold)).padding(.top, 28)
+                        Text(info.description).font(.builder(14.5)).foregroundStyle(Color.faint).padding(.top, 8)
+                            .accessibilityIdentifier("gameAbout")
+                        VStack(spacing: 0) {
+                            fact("Favorites", grouped(info.favorites))
+                            fact("Visits", grouped(info.visits))
+                            fact("Created", info.created)
+                            fact("Updated", info.updated)
+                            fact("Server Size", "\(info.maxPlayers)")
+                            fact("Genre", info.genre)
+                        }
+                        .padding(.top, 16)
+                    } else if loaded {
+                        Button { Task { await load() } } label: {
+                            Text("Couldn't load this experience's details. Tap to try again.").font(.builder(14.5)).foregroundStyle(Color.faint)
+                        }
+                        .padding(.top, 28).accessibilityIdentifier("gameRetry")
+                    }
+                }
+                .padding(.horizontal, 20).padding(.top, 11).padding(.bottom, 24)
+            }
+            bar
+        }
+        .background(Self.sheet, in: UnevenRoundedRectangle(topLeadingRadius: 16, topTrailingRadius: 16))
+        .offset(y: max(pull, 0))
+        .gesture(
+            DragGesture(minimumDistance: 6)
+                .updating($pull) { g, pull, _ in pull = g.translation.height }
+                .onEnded { g in if g.predictedEndTranslation.height > 140 { close() } },
+            including: .gesture
+        )
+        .animation(.spring(response: 0.28, dampingFraction: 0.92), value: pull == 0)
+        .task { await load() }
+    }
+
+    private func header(_ shown: Game) -> some View {
+        HStack(alignment: .top, spacing: 12.7) {
+            RoundedRectangle(cornerRadius: 8).fill(Color.tile).frame(width: 56, height: 56)
+                .overlay { RemoteImage(url: shown.icon, fill: true) }
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(game.name).font(.builder(20, .bold)).lineLimit(2)
                 if let c = info?.creator, !c.isEmpty {
-                    Text("By \(c)").font(.builder(14.5)).foregroundStyle(Color.faint).padding(.top, 4)
-                }
-                HStack(spacing: 0) {
-                    stat("thumb-up", shown.rating.map { "\($0)%" } ?? "--", "Rating")
-                    stat("two-people", short(info?.playing ?? game.playing), "Active")
-                    stat("circle-play", info.map { short($0.visits) } ?? "--", "Visits")
-                }
-                .padding(.top, 18)
-                WideButton(title: joining ? "Joining…" : "Play", icon: "play-large") {
-                    joining = true
-                    Task {
-                        try? await Task.sleep(for: .seconds(2))
-                        joining = false
+                    HStack(spacing: 6) {
+                        Text(c).font(.builder(16)).lineLimit(1)
+                        if info?.creatorVerified == true { VerifiedBadge(size: 16).fixedSize() }
                     }
                 }
-                .accessibilityIdentifier("playButton")
-                .padding(.top, 18)
-                WideButton(title: favourite ? "Favorited" : "Favorite", main: false, icon: "star") {
-                    if favourite { store.profile.games.removeAll { $0.id == game.id } } else { store.profile.games.append(shown) }
+                if let maturity { Text(maturity).font(.builder(14.5)).foregroundStyle(Color.faint) }
+            }
+        }
+    }
+
+    private func pictures(_ shown: Game) -> some View {
+        let all = slides.isEmpty ? [shown.wide ?? shown.icon].compactMap { $0 } : slides
+        return RoundedRectangle(cornerRadius: 8).fill(Color.tile).aspectRatio(16 / 9, contentMode: .fit)
+            .overlay {
+                TabView(selection: $slide) {
+                    ForEach(all.indices, id: \.self) { i in RemoteImage(url: all[i], fill: true).tag(i) }
                 }
-                .accessibilityIdentifier("favoriteButton")
-                .padding(.top, 10)
-                if let info {
-                    Text("About").font(.builder(20, .bold)).padding(.top, 28)
-                    Text(info.description).font(.builder(14.5)).foregroundStyle(Color.faint).padding(.top, 8)
-                        .accessibilityIdentifier("gameAbout")
-                    VStack(spacing: 0) {
-                        fact("Favorites", grouped(info.favorites))
-                        fact("Visits", grouped(info.visits))
-                        fact("Created", info.created)
-                        fact("Updated", info.updated)
-                        fact("Server Size", "\(info.maxPlayers)")
-                        fact("Genre", info.genre)
+                .tabViewStyle(.page(indexDisplayMode: .never))
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(alignment: .bottom) {
+                if all.count > 1 {
+                    HStack(spacing: 7) {
+                        ForEach(all.indices, id: \.self) { i in
+                            Capsule().fill(Color.white.opacity(i == slide ? 1 : 0.75)).frame(width: i == slide ? 24 : 6, height: 6)
+                        }
                     }
-                    .padding(.top, 16)
-                } else if loaded {
-                    Button { Task { await load() } } label: {
-                        Text("Couldn't load this experience's details. Tap to try again.").font(.builder(14.5)).foregroundStyle(Color.faint)
-                    }
-                    .padding(.top, 28).accessibilityIdentifier("gameRetry")
+                    .animation(.easeOut(duration: 0.2), value: slide)
+                    .padding(.bottom, 14)
                 }
             }
-            .padding(20)
+    }
+
+    private func chips(_ shown: Game) -> some View {
+        let favourite = store.profile.games.contains { $0.id == game.id }
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    Icon("thumb-up", size: 16)
+                    Text(shown.rating.map { "\($0)%" } ?? "--")
+                    Rectangle().fill(Color.faint.opacity(0.4)).frame(width: 1, height: 16)
+                    Icon("thumb-down", size: 16)
+                }
+                .chip()
+                HStack(spacing: 6) {
+                    Icon("two-people", size: 16)
+                    Text("\(short(info?.playing ?? game.playing)) active")
+                }
+                .chip()
+                Button { notify.toggle() } label: {
+                    HStack(spacing: 6) {
+                        Icon("bell", size: 16, filled: notify)
+                        Text(notify ? "Notifying" : "Notify")
+                    }
+                    .chip()
+                }
+                Button {
+                    if favourite { store.profile.games.removeAll { $0.id == game.id } } else { store.profile.games.append(shown) }
+                } label: {
+                    HStack(spacing: 6) {
+                        Icon("star", size: 16, filled: favourite)
+                        Text(favourite ? "Favorited" : "Favorite")
+                    }
+                    .chip()
+                }
+                .accessibilityIdentifier("favoriteButton")
+            }
         }
-        .page("")
-        .task { await load() }
+        .padding(.horizontal, -20).contentMargins(.horizontal, 20)
+        .buttonStyle(PressStyle())
+    }
+
+    private var bar: some View {
+        let favourite = store.profile.games.contains { $0.id == game.id }
+        return HStack(spacing: 0) {
+            Menu {
+                Button(favourite ? "Unfavorite" : "Favorite") {
+                    if favourite { store.profile.games.removeAll { $0.id == game.id } } else { store.profile.games.append(filled ?? game) }
+                }
+                Button(notify ? "Stop notifications" : "Notify") { notify.toggle() }
+            } label: { Icon("circle-three-dots-horizontal", size: 27).frame(width: 44, height: 48) }
+                .accessibilityLabel("More")
+            Button { close(); open(.friends) } label: { Icon("person-play", size: 27).frame(width: 44, height: 48) }
+                .accessibilityLabel("Play with friends").padding(.leading, 13)
+            Button {
+                joining = true
+                Task {
+                    try? await Task.sleep(for: .seconds(2))
+                    joining = false
+                }
+            } label: {
+                ZStack {
+                    if joining { ProgressView().tint(.white) } else { Icon("play-large", size: 26, filled: true) }
+                }
+                .foregroundStyle(.white).frame(maxWidth: .infinity).frame(height: 48)
+                .background(Color.bloxBlue, in: RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(PressStyle())
+            .accessibilityIdentifier("playButton").accessibilityLabel(joining ? "Joining" : "Play")
+            .padding(.leading, 18)
+        }
+        .foregroundStyle(Color.ink)
+        .padding(.leading, 14).padding(.trailing, 13).padding(.top, 13).padding(.bottom, 8)
+        .background(Color.bg.ignoresSafeArea(edges: .bottom))
+        .overlay(alignment: .top) { Rectangle().fill(Color.rgb(47, 48, 56)).frame(height: 1) }
     }
 
     private func load() async {
         loaded = false
-        info = await Roblox.gameInfo(game.id)
+        async let i = Roblox.gameInfo(game.id)
+        async let m = Roblox.maturity(game.id)
+        async let s = Roblox.slides(game.id)
         if game.wide == nil || game.rating == nil { filled = await Roblox.complete([game]).first }
+        (info, maturity, slides) = await (i, m, s)
         loaded = true
-    }
-
-    private func stat(_ icon: String, _ value: String, _ label: String) -> some View {
-        VStack(spacing: 4) {
-            HStack(spacing: 5) {
-                Icon(icon, size: 18, filled: true)
-                Text(value).font(.builder(17, .bold))
-            }
-            Text(label).font(.builder(12)).foregroundStyle(Color.faint)
-        }
-        .frame(maxWidth: .infinity)
     }
 
     private func fact(_ name: String, _ value: String) -> some View {
@@ -643,6 +747,12 @@ struct GamePage: View {
             .frame(height: 40)
             Divider().overlay(Color.tile)
         }
+    }
+}
+
+private extension View {
+    func chip() -> some View {
+        font(.builder(14.5)).padding(.horizontal, 12).frame(height: 32).background(Color.tile, in: Capsule())
     }
 }
 

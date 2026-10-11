@@ -145,4 +145,14 @@ public enum Parse {
         for u in r.data { out[u.universeId] = u.thumbnails?.first { $0.state == "Completed" }?.imageUrl }
         return out
     }
+
+    public static func slides(_ data: Data) -> [String] {
+        struct R: Decodable {
+            struct U: Decodable { let thumbnails: [T]? }
+            struct T: Decodable { let state: String; let imageUrl: String? }
+            let data: [U]
+        }
+        let first = (try? JSONDecoder().decode(R.self, from: data))?.data.first
+        return first?.thumbnails?.filter { $0.state == "Completed" }.compactMap(\.imageUrl) ?? []
+    }
 }

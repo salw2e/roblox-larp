@@ -227,6 +227,11 @@ final class ParseTests: XCTestCase {
     }
 
     func testWideThumbs() throws {
+        let slides = Parse.slides(try fixture("slides"))
+        XCTAssertEqual(slides.count, 6)
+        XCTAssertEqual(Set(slides).count, 6)
+        XCTAssertTrue(slides.allSatisfy { $0.hasPrefix("https://tr.rbxcdn.com/") })
+        XCTAssertEqual(Parse.slides(Data("{}".utf8)), [])
         let w = Parse.wideThumbs(try fixture("wide-thumbs"))
         XCTAssertNotNil(w[383310974])
         XCTAssertNotNil(w[10563114921])
@@ -533,6 +538,9 @@ final class ExtrasTests: XCTestCase {
     func testGameAndItemInfo() throws {
         let g = try XCTUnwrap(Parse.gameInfo(try fixture("game-details")))
         XCTAssertEqual(g.creator, "Uplift Games")
+        XCTAssertTrue(g.creatorVerified)
+        XCTAssertEqual(Parse.maturity(try fixture("maturity")), "Maturity: Minimal")
+        XCTAssertNil(Parse.maturity(Data("{}".utf8)))
         XCTAssertEqual(g.created, "7/14/2017")
         XCTAssertEqual(Parse.day("2017-07-14T19:26:21.347Z", zone: TimeZone(identifier: "Asia/Phnom_Penh")!), "7/15/2017")   // already the 15th there
         XCTAssertEqual(Parse.day("2017-07-14T19:26:21Z", zone: TimeZone(identifier: "UTC")!), "7/14/2017")

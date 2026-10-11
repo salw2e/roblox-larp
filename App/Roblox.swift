@@ -229,6 +229,20 @@ enum Roblox {
         return Parse.gameInfo(data)
     }
 
+    static func maturity(_ universe: Int64) async -> String? {
+        let body = Data(#"{"universeId":"\#(universe)"}"#.utf8)
+        guard let data = try? await fetch(URL(string: "https://apis.roblox.com/experience-guidelines-api/experience-guidelines/get-age-recommendation")!,
+                                          post: body) else { return nil }
+        return Parse.maturity(data)
+    }
+
+    static func slides(_ universe: Int64) async -> [String] {
+        let u = url("https://thumbnails.roblox.com/v1/games/multiget/thumbnails",
+                    ["universeIds": "\(universe)", "countPerUniverse": "10", "size": "768x432", "format": "Png"])
+        guard let data = try? await fetch(u) else { return [] }
+        return Parse.slides(data)
+    }
+
     static func home() async throws -> [(title: String, games: [Game])] {
         let sorts = Parse.sorts(try await fetch(url("https://apis.roblox.com/explore-api/v1/get-sorts", ["sessionId": UUID().uuidString])))
         let wide = await gamePictures(Array(Set(sorts.flatMap { $0.games.prefix(12).map(\.id) }))).wide

@@ -10,6 +10,7 @@ struct RootView: View {
     @State private var path: [Page] = []        // pages pushed over the tabs
     @State private var settings = false
     @State private var robux = false
+    @State private var game: Game?
     @State private var profileOpen = false
     @State private var profileFull = false      // dragged up to fill the screen
     @State private var profileAtTop = true
@@ -17,11 +18,24 @@ struct RootView: View {
     static let profileHalfTop: CGFloat = 311
     @GestureState private var menuPull: CGFloat = 0
 
+    static let gameTop: CGFloat = 335
+
     var body: some View {
-        NavigationStack(path: $path) {
-            tabs
-                .toolbar(.hidden, for: .navigationBar)
-                .navigationDestination(for: Page.self, destination: destination)
+        ZStack {
+            NavigationStack(path: $path) {
+                tabs
+                    .toolbar(.hidden, for: .navigationBar)
+                    .navigationDestination(for: Page.self, destination: destination)
+            }
+            if let g = game {
+                Color.black.opacity(0.55).ignoresSafeArea().onTapGesture(perform: closeGame)
+                    .transition(.identity)
+                    .accessibilityIdentifier("closeGame").accessibilityLabel("Close game").accessibilityAddTraits(.isButton)
+                GamePage(game: g, close: closeGame, open: { open($0) })
+                    .id(g.id)
+                    .padding(.top, Self.gameTop)
+                    .transition(.move(edge: .bottom)).zIndex(1)
+            }
         }
         .sheet(isPresented: $settings) { EditProfileView() }
         .fullScreenCover(isPresented: $robux) { NavigationStack { RobuxPage { robux = false } } }
@@ -31,7 +45,7 @@ struct RootView: View {
     @ViewBuilder
     private func destination(_ p: Page) -> some View {
         switch p {
-        case .profile, .settings, .momentsTab, .robux: EmptyView()
+        case .profile, .settings, .momentsTab, .robux, .game: EmptyView()
         case .fullProfile: FullProfileView(open: { open($0) }) { path.removeAll(); profileOpen = false; tab = .me }
         case .inventory: InventoryPage(open: { open($0) })
         case .favorites: GamesPage(title: "Favorites", games: store.profile.games, empty: "No favorites yet. Open a game and tap Favorite.", open: { open($0) })
@@ -42,7 +56,6 @@ struct RootView: View {
         case .notifications: NotificationsPage()
         case .trades: TradesPage(open: { open($0) })
         case .trade(let id): TradePage(id: id)
-        case .game(let game): GamePage(game: game)
         case .item(let item): ItemPage(item: item)
         case .chat(let friend): ChatPage(friendId: friend)
         case .search: SearchPage(open: { open($0) })
@@ -106,6 +119,8 @@ struct RootView: View {
             settings = true
         case .robux:
             robux = true
+        case .game(let g):
+            withAnimation(Self.sheetRise) { game = g }
         case .momentsTab:
             profileOpen = false
             tab = .moments
@@ -116,6 +131,8 @@ struct RootView: View {
 
     static let sheetRise = Animation.timingCurve(0.15, 0.85, 0.3, 1, duration: 0.22)
     static let sheetSettle = Animation.spring(response: 0.28, dampingFraction: 0.92)
+
+    private func closeGame() { withAnimation(.easeIn(duration: 0.18)) { game = nil } }
 
     private func closeProfile() { withAnimation(.easeIn(duration: 0.18)) { profileOpen = false } }
 

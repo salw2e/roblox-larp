@@ -131,6 +131,7 @@ public struct GameInfo: Equatable, Sendable {
     public var genre: String
     public var created: String      // 7/14/2017
     public var updated: String
+    public var creatorVerified = false
 }
 
 public struct ItemInfo: Equatable, Sendable {
@@ -143,7 +144,7 @@ public struct ItemInfo: Equatable, Sendable {
 extension Parse {
     public static func gameInfo(_ data: Data) -> GameInfo? {
         struct R: Decodable {
-            struct C: Decodable { let name: String? }
+            struct C: Decodable { let name: String?; let hasVerifiedBadge: Bool? }
             struct G: Decodable {
                 let description: String?; let creator: C?; let playing: Int?; let visits: Int?; let favoritedCount: Int?
                 let maxPlayers: Int?; let genre_l1: String?; let genre: String?; let created: String?; let updated: String?
@@ -153,7 +154,18 @@ extension Parse {
         guard let g = (try? JSONDecoder().decode(R.self, from: data))?.data.first else { return nil }
         return GameInfo(description: g.description ?? "", creator: g.creator?.name ?? "", playing: g.playing ?? 0,
                         visits: g.visits ?? 0, favorites: g.favoritedCount ?? 0, maxPlayers: g.maxPlayers ?? 0,
-                        genre: g.genre_l1 ?? g.genre ?? "", created: day(g.created), updated: day(g.updated))
+                        genre: g.genre_l1 ?? g.genre ?? "", created: day(g.created), updated: day(g.updated),
+                        creatorVerified: g.creator?.hasVerifiedBadge ?? false)
+    }
+
+    public static func maturity(_ data: Data) -> String? {
+        struct R: Decodable {
+            struct D: Decodable { let summary: S? }
+            struct S: Decodable { let ageRecommendation: A? }
+            struct A: Decodable { let displayNameWithHeaderShort: String? }
+            let ageRecommendationDetails: D?
+        }
+        return (try? JSONDecoder().decode(R.self, from: data))?.ageRecommendationDetails?.summary?.ageRecommendation?.displayNameWithHeaderShort
     }
 
     public static func itemInfo(_ data: Data) -> ItemInfo? {

@@ -181,8 +181,10 @@ final class BloxUITests: XCTestCase {
         app.buttons["homeGame"].firstMatch.tap()
         XCTAssertTrue(app.buttons["playButton"].waitForExistence(timeout: 5))
         XCTAssertTrue(any("gameAbout").waitForExistence(timeout: 30), "the description comes from Roblox")
+        sleep(2)
         shot("10d game")
-        back()
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)).tap()
+        XCTAssertTrue(app.buttons["playButton"].waitForNonExistence(timeout: 3))
 
         app.buttons["homeBell"].tap()
         XCTAssertTrue(any("noticeRow").waitForExistence(timeout: 5))
