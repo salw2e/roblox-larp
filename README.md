@@ -2,6 +2,16 @@
 
 roblox look-alike for iphone. fake profile, robux, avatar, marketplace, the lot. just for fun, not affiliated with roblox.
 
+## build
+
+swiftui, built unsigned on github actions, installed with sideloadly.
+
+```
+cd Packages/BloxKit && swift test
+```
+
+`server/` is the small avatar service the app talks to.
+
 ## the app
 
 <picture>
@@ -15,13 +25,3 @@ roblox look-alike for iphone. fake profile, robux, avatar, marketplace, the lot.
   <source media="(min-width: 768px)" srcset="shots/editor-wide.webp">
   <img src="shots/editor.webp" width="100%" alt="edit profile, saved outfits, skin, build">
 </picture>
-
-## build
-
-swiftui, built unsigned on github actions, installed with sideloadly.
-
-```
-cd Packages/BloxKit && swift test
-```
-
-`server/` is the small avatar service the app talks to.
