@@ -780,6 +780,7 @@ struct FriendSheet: View {
     }
 }
 
+@MainActor
 private func counts(_ them: Roblox.Someone?) -> some View {
     func chip(_ n: Int, _ what: String) -> some View {
         Text("\(short(n)) \(what)").font(.builder(14.5)).lineLimit(1).fixedSize().padding(.horizontal, 12).frame(height: 31)
