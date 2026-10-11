@@ -369,7 +369,7 @@ struct SendRobuxSheet: View {
         }
         .foregroundStyle(Color.ink)
         .padding(.horizontal, 21)
-        .presentationDetents([.fraction(0.86)])
+        .presentationDetents([.height(822)])
         .presentationCornerRadius(16)
         .presentationBackground(Color.rgb(25, 26, 31))
         .alert("Send Robux to \(to?.displayName ?? "")", isPresented: Binding(get: { to != nil }, set: { if !$0 { to = nil } })) {
