@@ -768,7 +768,7 @@ struct GamePage: View {
     @State private var more: Roblox.GameMore?
     @State private var wholeText = false
     @State private var pass: GamePass?          // the Store pass being bought
-    @State private var short = false
+    @State private var notEnough = false
     @State private var filled: Game?
     @State private var slides: [String] = []
     @State private var events: [GameEvent] = []
@@ -847,10 +847,10 @@ struct GamePage: View {
             including: .gesture
         )
         .alert(pass.map { "Buy \($0.name)" } ?? "", isPresented: Binding(get: { pass != nil }, set: { if !$0 { pass = nil } }), presenting: pass) { p in
-            Button("Buy Now") { if !store.profile.send(p.price ?? 0) { short = true } }
+            Button("Buy Now") { if !store.profile.send(p.price ?? 0) { notEnough = true } }
             Button("Cancel", role: .cancel) {}
         } message: { p in Text("Buy \(p.name) for \(grouped(p.price ?? 0)) Robux?") }
-        .alert("Not enough Robux", isPresented: $short) {
+        .alert("Not enough Robux", isPresented: $notEnough) {
             Button("OK", role: .cancel) {}
         } message: { Text("Get more on the Buy Robux page.") }
         .animation(.spring(response: 0.28, dampingFraction: 0.92), value: pull == 0)
