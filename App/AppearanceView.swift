@@ -28,6 +28,7 @@ struct AppearanceView: View {
     @State private var slotPicked: [Shelf: String] = [:]
     @State private var suggested: [String: [Item]] = [:]
     @State private var plusOnes: [Item] = []
+    @State private var buying: Item?                         // the try-on bar's price button
     @State private var naming = false
     @State private var outfitName = ""
     @State private var details: Outfit?
@@ -83,6 +84,8 @@ struct AppearanceView: View {
         .alert("Price not changed", isPresented: Binding(get: { !priceProblem.isEmpty }, set: { if !$0 { priceProblem = "" } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(priceProblem) }
+        .buying($buying, open: open) { it in if store.trial?.key == it.key { store.keepTrial() } }
+        .onChange(of: active) { _, on in if !on { store.tryOn(nil) } }
     }
 
     private var stage: some View {
@@ -197,6 +200,7 @@ struct AppearanceView: View {
                 if customize { inventory } else { marketplace }
             }
             .refreshable { if !customize { await load() } }
+            if let t = store.trial, !customize { trialBar(t) }
         }
         .background(Color.bg, in: UnevenRoundedRectangle(topLeadingRadius: 16, topTrailingRadius: 16))
     }
@@ -359,8 +363,57 @@ struct AppearanceView: View {
     }
 
     private func catalogTile(_ item: Item) -> some View {
-        Button { open(.item(item)) } label: { tile(item, showCreator: true) }
-            .accessibilityIdentifier("catalogItem")
+        let trying = store.trial?.key == item.key
+        return Button {
+            if trying || store.profile.owns(item) != nil { open(.item(item)) } else { store.tryOn(item) }
+        } label: {
+            tile(item, showCreator: true)
+                .overlay(alignment: .top) {
+                    if trying {
+                        GeometryReader { g in
+                            RoundedRectangle(cornerRadius: 8).stroke(Color.white, lineWidth: 2)
+                                .overlay(alignment: .bottom) {
+                                    Text("Details").font(.builder(12, .medium)).foregroundStyle(Color.bg)
+                                        .frame(maxWidth: .infinity).frame(height: 26)
+                                        .background(Color.white.opacity(0.92), in: UnevenRoundedRectangle(bottomLeadingRadius: 6, bottomTrailingRadius: 6))
+                                        .padding(2)
+                                }
+                                .frame(width: g.size.width, height: g.size.width)
+                        }
+                    }
+                }
+        }
+        .accessibilityIdentifier("catalogItem")
+        .accessibilityLabel(trying ? "\(item.name), trying on. Details" : item.name)
+    }
+
+    private func trialBar(_ t: Item) -> some View {
+        HStack(spacing: 14) {
+            Button { buying = t } label: {
+                HStack(spacing: 6) {
+                    if let price = t.price, price > 0 {
+                        Icon("robux", size: 20)
+                        Text(grouped(price)).font(.builder(16, .bold))
+                    } else {
+                        Text(t.price == nil ? "Off Sale" : "Get").font(.builder(16, .bold))
+                    }
+                }
+                .foregroundStyle(.white).frame(maxWidth: .infinity).frame(height: 40)
+                .background(t.price == nil ? Color.tile : Color.bloxBlue, in: RoundedRectangle(cornerRadius: 8))
+            }
+            .disabled(t.price == nil)
+            .accessibilityIdentifier("trialBuy")
+            Menu {
+                Button("Details") { open(.item(t)) }
+                Button("Take Off") { store.tryOn(nil) }
+            } label: {
+                Icon("three-dots-horizontal", size: 20).frame(width: 40, height: 40).background(Color.tile, in: Circle())
+            }
+            .accessibilityIdentifier("trialMore").accessibilityLabel("More")
+        }
+        .foregroundStyle(Color.ink)
+        .padding(.horizontal, 20).padding(.vertical, 10)
+        .background(Color.bg)
     }
 
     private var inventory: some View {

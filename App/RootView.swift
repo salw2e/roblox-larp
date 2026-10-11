@@ -11,6 +11,7 @@ struct RootView: View {
     @State private var settings = false
     @State private var robux = false
     @State private var game: Game?
+    @State private var item: Item?
     @State private var profileOpen = false
     @State private var profileFull = false      // dragged up to fill the screen
     @State private var profileAtTop = true
@@ -39,13 +40,19 @@ struct RootView: View {
         }
         .sheet(isPresented: $settings) { EditProfileView() }
         .fullScreenCover(isPresented: $robux) { NavigationStack { RobuxPage { robux = false } } }
+        .fullScreenCover(item: $item) { it in
+            NavigationStack {
+                ItemPage(item: it, close: { item = nil }, open: openAfterItem)
+                    .navigationDestination(for: Item.self) { ItemPage(item: $0, close: { item = nil }, isRoot: false, open: openAfterItem) }
+            }
+        }
         .task { await store.refreshSaved() }
     }
 
     @ViewBuilder
     private func destination(_ p: Page) -> some View {
         switch p {
-        case .profile, .settings, .momentsTab, .robux, .game: EmptyView()
+        case .profile, .settings, .momentsTab, .robux, .game, .item: EmptyView()
         case .fullProfile: FullProfileView(open: { open($0) }) { path.removeAll(); profileOpen = false; tab = .me }
         case .inventory: InventoryPage(open: { open($0) })
         case .favorites: GamesPage(title: "Favorites", games: store.profile.games, empty: "No favorites yet. Open a game and tap Favorite.", open: { open($0) })
@@ -56,7 +63,6 @@ struct RootView: View {
         case .notifications: NotificationsPage()
         case .trades: TradesPage(open: { open($0) })
         case .trade(let id): TradePage(id: id)
-        case .item(let item): ItemPage(item: item)
         case .chat(let friend): ChatPage(friendId: friend)
         case .search: SearchPage(open: { open($0) })
         case .info(let kind): InfoPage(kind: kind)
@@ -121,6 +127,8 @@ struct RootView: View {
             robux = true
         case .game(let g):
             withAnimation(Self.sheetRise) { game = g }
+        case .item(let i):
+            item = i
         case .momentsTab:
             profileOpen = false
             tab = .moments
@@ -131,6 +139,14 @@ struct RootView: View {
 
     static let sheetRise = Animation.timingCurve(0.15, 0.85, 0.3, 1, duration: 0.22)
     static let sheetSettle = Animation.spring(response: 0.28, dampingFraction: 0.92)
+
+    private func openAfterItem(_ p: Page) {
+        item = nil
+        Task {
+            try? await Task.sleep(for: .milliseconds(450))
+            open(p)
+        }
+    }
 
     private func closeGame() { withAnimation(.easeIn(duration: 0.18)) { game = nil } }
 

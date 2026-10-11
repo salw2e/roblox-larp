@@ -442,108 +442,317 @@ struct TransactionsPage: View {
 
 struct ItemPage: View {
     @EnvironmentObject var store: Store
+    @Environment(\.dismiss) private var dismiss
     let item: Item
-    @State private var info: ItemInfo?
+    var close: () -> Void = {}
+    var isRoot = true
+    var open: (Page) -> Void = { _ in }
+    @State private var detail: ItemDetail?
     @State private var sharp: String?
+    @State private var partPictures: [Int64: String] = [:]
+    @State private var also: [Item] = []
     @State private var loaded = false
-    @State private var confirming = false
-    @State private var refusal = ""
+    @State private var wholeText = false
+    @State private var buying: Item?
 
     var body: some View {
+        let shown = detail?.item ?? item
+        VStack(spacing: 0) {
+            HStack {
+                Button { if isRoot { close() } else { dismiss() } } label: {
+                    Icon(isRoot ? "x" : "chevron-large-left", size: 26).frame(width: 44, height: 44)
+                }
+                .accessibilityIdentifier("itemClose").accessibilityLabel(isRoot ? "Close" : "Back")
+                Spacer()
+            }
+            .padding(.leading, 10).frame(height: 44)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(spacing: 8) {
+                        Text(item.name).font(.builder(20, .bold)).lineLimit(2)
+                        if shown.limited == true {
+                            Text("Limited").font(.builder(12, .bold)).padding(.horizontal, 8).frame(height: 22)
+                                .background(Color.online, in: RoundedRectangle(cornerRadius: 4)).foregroundStyle(.black)
+                        }
+                    }
+                    .padding(.top, 21)
+                    RemoteImage(url: sharp ?? item.thumb, fill: false).frame(height: 220).frame(maxWidth: .infinity).padding(.top, 16)
+                    if let parts = detail?.parts, !parts.isEmpty {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: 3), spacing: 16) {
+                            ForEach(parts) { p in
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Thumb(url: partPictures[p.id])
+                                    Text(p.name).font(.builder(14.5, .bold)).lineLimit(1)
+                                }
+                            }
+                        }
+                        .padding(.top, 24)
+                    }
+                    if let d = detail?.description, !d.isEmpty {
+                        VStack(spacing: 4) {
+                            Text(d).font(.builder(16)).foregroundStyle(Color.faint).lineLimit(wholeText ? nil : 3)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Button { withAnimation(.easeOut(duration: 0.2)) { wholeText.toggle() } } label: {
+                                Icon(wholeText ? "chevron-small-up" : "chevron-small-down", size: 22).frame(width: 44, height: 24)
+                            }
+                            .accessibilityLabel(wholeText ? "Less" : "More")
+                        }
+                        .padding(.top, 24)
+                    }
+                    if let f = detail?.favorites {
+                        HStack(spacing: 14) {
+                            Icon("star", size: 40, filled: true)
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(short(f)).font(.builder(26, .bold))
+                                Text("Favorites").font(.builder(12))
+                            }
+                        }
+                        .padding(.top, 24).padding(.leading, 10)
+                    }
+                    VStack(spacing: 0) {
+                        if !shown.creator.isEmpty {
+                            row("Creator") {
+                                HStack(spacing: 6) {
+                                    Text(shown.creator).font(.builder(16, .bold))
+                                    if shown.showsCreatorCheck { VerifiedBadge(size: 14) }
+                                    Icon("arrow-large-right", size: 18)
+                                }
+                            }
+                        }
+                        if let t = detail?.type, !t.isEmpty { row("Type") { Text(t).font(.builder(16)) } }
+                        if let d = detail { row("Placement") { Text(d.placement).font(.builder(16)) } }
+                    }
+                    .padding(.top, 20)
+                    if let owned = store.profile.owns(item) {
+                        HStack(spacing: 6) {
+                            Icon("circle-check", size: 18, filled: true)
+                            Text(owned.wearing ? "You own this item and are wearing it" : "You own this item").font(.builder(14.5))
+                        }
+                        .foregroundStyle(Color.faint).padding(.top, 20).accessibilityIdentifier("itemOwned")
+                    } else if shown.price == nil, loaded {
+                        Text("This item is not currently for sale.").font(.builder(14.5)).foregroundStyle(Color.faint)
+                            .padding(.top, 20).accessibilityIdentifier("notForSale")
+                    }
+                    if loaded, detail == nil {
+                        Button { Task { await load() } } label: {
+                            Text("Couldn't load this item's details. Tap to try again.").font(.builder(14.5)).foregroundStyle(Color.faint)
+                        }
+                        .padding(.top, 24).accessibilityIdentifier("itemRetry")
+                    }
+                    if !also.isEmpty {
+                        Text("You May Also Like").font(.builder(20, .bold)).padding(.top, 32).padding(.bottom, 12)
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3), spacing: 20) {
+                            ForEach(also) { a in
+                                NavigationLink(value: a) { ItemCard(item: a) }.buttonStyle(PressStyle())
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 20).padding(.bottom, 24)
+            }
+            bar(shown)
+        }
+        .background(Color.bg)
+        .toolbar(.hidden, for: .navigationBar)
+        .buying($buying, open: { close(); open($0) }) { it in if store.trial?.key == it.key { store.keepTrial() } }
+        .task { await load() }
+    }
+
+    private func bar(_ shown: Item) -> some View {
         let owned = store.profile.owns(item)
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                Thumb(url: sharp ?? item.thumb)
-                HStack(spacing: 8) {
-                    Text(item.name).font(.builder(20, .bold))
-                    if info?.limited == true || item.limited == true {
-                        Text("Limited").font(.builder(12, .bold)).padding(.horizontal, 8).frame(height: 22)
-                            .background(Color.online, in: RoundedRectangle(cornerRadius: 4)).foregroundStyle(.black)
-                    }
-                }
-                .padding(.top, 16)
-                if !item.creator.isEmpty {
-                    HStack(spacing: 4) {
-                        Text("By \(item.creator)").font(.builder(14.5)).foregroundStyle(Color.faint)
-                        if item.showsCreatorCheck { VerifiedBadge(size: 12) }
-                    }
-                    .padding(.top, 4)
-                }
-                PriceLine(price: (owned ?? item).price, size: 20).padding(.top, 14)
+        let trying = store.trial?.key == item.key
+        return HStack(spacing: 14) {
+            Group {
                 if let owned {
-                    HStack(spacing: 6) {
-                        Icon("circle-check", size: 18, filled: true)
-                        Text("Item Owned").font(.builder(14.5))
+                    Button { store.wear(item, !owned.wearing) } label: {
+                        Text(owned.wearing ? "Take Off" : "Wear").font(.builder(16, .bold)).frame(maxWidth: .infinity).frame(height: 40)
+                            .background(owned.wearing ? Color.tile : Color.bloxBlue, in: RoundedRectangle(cornerRadius: 8))
                     }
-                    .foregroundStyle(Color.faint).padding(.top, 10).accessibilityIdentifier("itemOwned")
-                    WideButton(title: owned.wearing ? "Take Off" : "Wear", main: !owned.wearing) { store.wear(item, !owned.wearing) }
-                        .accessibilityIdentifier("wearButton")
-                        .padding(.top, 12)
-                } else if item.price == nil {
-                    Text("This item is not currently for sale.").font(.builder(14.5)).foregroundStyle(Color.faint)
-                        .frame(maxWidth: .infinity, minHeight: 48).background(Color.tile, in: RoundedRectangle(cornerRadius: 8))
-                        .padding(.top, 16).accessibilityIdentifier("notForSale")
-                } else {
-                    WideButton(title: item.price == 0 ? "Get" : "Buy") {
-                        if item.price == 0 { finish(store.profile.buy(item)) } else { confirming = true }
+                    .accessibilityIdentifier("wearButton")
+                } else if let price = shown.price {
+                    Button { buying = shown } label: {
+                        HStack(spacing: 6) {
+                            if price == 0 { Text("Get").font(.builder(16, .bold)) } else {
+                                Icon("robux", size: 20)
+                                Text(grouped(price)).font(.builder(16, .bold))
+                            }
+                        }
+                        .frame(maxWidth: .infinity).frame(height: 40).background(Color.bloxBlue, in: RoundedRectangle(cornerRadius: 8))
                     }
                     .accessibilityIdentifier("buyButton")
-                    .padding(.top, 16)
-                }
-                if !refusal.isEmpty { Text(refusal).font(.builder(14.5)).foregroundStyle(Color.faint).padding(.top, 10).accessibilityIdentifier("buyRefusal") }
-                detail("Type", info?.type ?? "").padding(.top, 24)
-                detail("Created", info?.created ?? "")
-                if let d = info?.description, !d.isEmpty {
-                    Text("Description").font(.builder(16, .bold)).padding(.top, 20)
-                    Text(d).font(.builder(14.5)).foregroundStyle(Color.faint).padding(.top, 6)
-                }
-                if loaded, info == nil, !item.bundle {
-                    Button { Task { await load() } } label: {
-                        Text("Couldn't load this item's details. Tap to try again.").font(.builder(14.5)).foregroundStyle(Color.faint)
-                    }
-                    .padding(.top, 24).accessibilityIdentifier("itemRetry")
+                } else {
+                    Text("Off Sale").font(.builder(16, .bold)).foregroundStyle(Color.faint).frame(maxWidth: .infinity).frame(height: 40)
+                        .background(Color.tile, in: RoundedRectangle(cornerRadius: 8))
                 }
             }
-            .padding(20)
+            .foregroundStyle(.white)
+            .buttonStyle(PressStyle())
+            Menu {
+                if owned == nil {
+                    Button(trying ? "Take Off" : "Try On") { store.tryOn(trying ? nil : shown) }
+                } else {
+                    Button("Remove from inventory", role: .destructive) { store.profile.items.removeAll { $0.same(item) } }
+                }
+            } label: {
+                Icon("three-dots-horizontal", size: 20).frame(width: 40, height: 40).background(Color.tile, in: Circle())
+            }
+            .accessibilityIdentifier("itemMore").accessibilityLabel("More")
         }
-        .page("")
-        .task { await load() }
-        .alert("Buy Item", isPresented: $confirming) {
-            Button("Buy Now") { finish(store.profile.buy(item)) }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            let after = store.profile.robux - (item.price ?? 0)
-            Text("Would you like to buy \(item.name) for \(grouped(item.price ?? 0)) Robux?" +
-                 (after >= 0 ? " Your balance after this transaction will be \(grouped(after)) Robux." : ""))
+        .foregroundStyle(Color.ink)
+        .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 6)
+        .background(Color.bg)
+    }
+
+    private func row<V: View>(_ name: String, @ViewBuilder _ value: () -> V) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(name).font(.builder(16)).foregroundStyle(Color.faint)
+                Spacer()
+                value()
+            }
+            .frame(height: 55)
+            Divider().overlay(Color.tile)
         }
     }
 
     private func load() async {
         loaded = false
-        async let details = Roblox.itemInfo(item)
+        async let d = Roblox.itemDetails([item])
         async let picture = Roblox.bigThumb(item)
-        info = await details
+        detail = await d.first
         sharp = await picture
         loaded = true
-    }
-
-    private func finish(_ result: Purchase) {
-        switch result {
-        case .bought, .alreadyOwned: refusal = ""
-        case .tooExpensive: refusal = "You need \(grouped((item.price ?? 0) - store.profile.robux)) more Robux to buy this item."
-        case .offSale: refusal = "This item is not currently for sale."
+        if let parts = detail?.parts, !parts.isEmpty {
+            let pics = await Roblox.withThumbs(parts)
+            partPictures = Dictionary(pics.compactMap { p in p.thumb.map { (p.id, $0) } }, uniquingKeysWith: { a, _ in a })
         }
+        also = await Roblox.recommended(for: detail?.item ?? item, bundleType: detail?.bundleType)
     }
+}
 
-    @ViewBuilder
-    private func detail(_ name: String, _ value: String) -> some View {
-        if !value.isEmpty {
-            HStack {
-                Text(name).font(.builder(14.5)).foregroundStyle(Color.faint).frame(width: 110, alignment: .leading)
-                Text(value).font(.builder(14.5))
+struct Buying: ViewModifier {
+    @EnvironmentObject var store: Store
+    @Binding var item: Item?
+    var open: (Page) -> Void
+    var bought: (Item) -> Void
+    @State private var confirm: Item?
+    @State private var short: Item?
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: item) { _, new in
+                guard let new, let price = new.price else { return }
+                item = nil
+                if price == 0 { finish(new) } else if price <= store.profile.robux { confirm = new } else { short = new }
             }
-            .frame(height: 32)
+            .alert("Buy Item", isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }), presenting: confirm) { it in
+                Button("Buy Now") { finish(it) }
+                Button("Cancel", role: .cancel) {}
+            } message: { it in
+                let after = store.profile.robux - (it.price ?? 0)
+                Text("Would you like to buy \(it.name) for \(grouped(it.price ?? 0)) Robux? Your balance after this transaction will be \(grouped(after)) Robux.")
+            }
+            .overlay {
+                if let it = short {
+                    BuyRobuxAndItem(item: it, close: { short = nil }, plus: { short = nil; open(.robux) }) { finish(it) }
+                        .transition(.opacity)
+                }
+            }
+            .animation(.easeOut(duration: 0.18), value: short?.key)
+    }
+
+    private func finish(_ it: Item) {
+        if store.profile.buy(it) == .bought { bought(it) }
+    }
+}
+
+extension View {
+    func buying(_ item: Binding<Item?>, open: @escaping (Page) -> Void, bought: @escaping (Item) -> Void = { _ in }) -> some View {
+        modifier(Buying(item: item, open: open, bought: bought))
+    }
+}
+
+struct BuyRobuxAndItem: View {
+    @EnvironmentObject var store: Store
+    let item: Item
+    let close: () -> Void
+    let plus: () -> Void
+    let buy: () -> Void
+    @State private var pick = 0
+
+    var body: some View {
+        let packs = robuxPacksFor(shortfall: (item.price ?? 0) - store.profile.robux)
+        ZStack {
+            Color.black.opacity(0.55).ignoresSafeArea().onTapGesture(perform: close)
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text("Buy Robux and item").font(.builder(18, .bold))
+                    Spacer()
+                    Button(action: close) { Icon("x", size: 22) }.accessibilityLabel("Close")
+                }
+                HStack(spacing: 14) {
+                    RemoteImage(url: item.thumb, fill: false).frame(width: 52, height: 52)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(item.name).font(.builder(14.5, .bold)).lineLimit(1)
+                        HStack(spacing: 4) {
+                            Icon("robux", size: 16)
+                            Text(grouped(item.price ?? 0)).font(.builder(14.5, .bold))
+                        }
+                    }
+                }
+                .padding(.top, 18)
+                VStack(spacing: 12) {
+                    ForEach(packs.indices, id: \.self) { i in
+                        Button { pick = i } label: {
+                            HStack(spacing: 6) {
+                                Icon("robux", size: 18)
+                                Text(grouped(packs[i].robux)).font(.builder(17, .bold))
+                                if packs[i].better {
+                                    HStack(spacing: 3) {
+                                        Icon("tag", size: 11)
+                                        Text("Better value").font(.builder(10.5, .medium))
+                                    }
+                                    .padding(.horizontal, 7).frame(height: 20).background(Color.tile, in: Capsule())
+                                }
+                                Spacer()
+                                Text(packs[i].price).font(.builder(16, .bold))
+                            }
+                            .padding(.horizontal, 14).frame(height: 54)
+                            .background(Color.rgb(32, 33, 38), in: RoundedRectangle(cornerRadius: 10))
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(i == pick ? Color.white : Color.tile, lineWidth: i == pick ? 2 : 1))
+                        }
+                        .accessibilityIdentifier("pack-\(packs[i].robux)")
+                    }
+                }
+                .padding(.top, 18)
+                Button {
+                    if packs.indices.contains(pick) { store.profile.topUp(packs[pick].robux) }
+                    close()
+                    buy()
+                } label: {
+                    Text("Buy").font(.builder(16, .bold)).foregroundStyle(.white).frame(maxWidth: .infinity).frame(height: 40)
+                        .background(Color.bloxBlue, in: RoundedRectangle(cornerRadius: 8))
+                }
+                .accessibilityIdentifier("buyRobuxAndItem")
+                .padding(.top, 26)
+                Button(action: plus) {
+                    HStack(spacing: 8) {
+                        Icon("premium", size: 18)
+                        Text("Get 10% off").font(.builder(16, .bold))
+                    }
+                    .frame(maxWidth: .infinity).frame(height: 40).background(Color.tile, in: RoundedRectangle(cornerRadius: 8))
+                }
+                .padding(.top, 10)
+                Text("Nothing is charged: the Robux go to your pretend balance.").font(.builder(10.5)).foregroundStyle(Color.faint)
+                    .multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.top, 12)
+            }
+            .foregroundStyle(Color.ink)
+            .padding(18)
+            .frame(width: 321)
+            .background(Color.rgb(25, 26, 31), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.tile, lineWidth: 1))
         }
+        .buttonStyle(PressStyle())
     }
 }
 

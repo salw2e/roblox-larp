@@ -113,6 +113,29 @@ final class Store: ObservableObject {
         }
     }
 
+    // MARK: Trying on
+
+    @Published private(set) var trial: Item?
+
+    var shown: Profile {
+        guard let t = trial else { return profile }
+        var p = profile
+        p.wear(t)
+        return p
+    }
+
+    func tryOn(_ item: Item?) {
+        guard trial?.key != item?.key else { return }
+        trial = item
+        drawSoon()
+    }
+
+    func keepTrial() {
+        guard let t = trial else { return }
+        profile.wear(t)
+        trial = nil
+    }
+
     // MARK: Drawing on its own
 
     private var autoDraw: Task<Void, Never>?
@@ -125,7 +148,7 @@ final class Store: ObservableObject {
         autoDraw?.cancel()
         autoDraw = Task { [weak self] in
             try? await Task.sleep(for: .seconds(seconds))
-            guard let self, !Task.isCancelled, self.profile.needsRedraw, self.modelVersion > 0 else { return }
+            guard let self, !Task.isCancelled, self.shown.needsRedraw, self.modelVersion > 0 else { return }
             if self.drawing {
                 self.autoDraw = nil
                 return self.drawSoon(after: 2, tries: tries)
@@ -139,7 +162,7 @@ final class Store: ObservableObject {
             let drew = await self.redraw()
             self.autoDraw = nil
             if !drew, tries < 4 { self.drawSoon(after: 60, tries: tries + 1) }        // busy or offline: try again
-            else if drew, self.profile.needsRedraw { self.drawSoon() }                // changed again while drawing
+            else if drew, self.shown.needsRedraw { self.drawSoon() }                  // changed again while drawing
         }
     }
 
@@ -226,7 +249,8 @@ final class Store: ObservableObject {
         drawing = true
         drawNote = ""
         defer { drawing = false }
-        let wear = profile.wearing, body = profile.definition, asked = drawSignature(profile.items, profile.definition)
+        let now = shown         // with anything being tried on
+        let wear = now.wearing, body = now.definition, asked = drawSignature(now.items, now.definition)
         do {
             let look = try await Roblox.look(lookRequest(definition: body, wear: wear))
             try await install(look)

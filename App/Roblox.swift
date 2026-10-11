@@ -139,8 +139,39 @@ enum Roblox {
         return Parse.asset(data)?.kind
     }
 
+    static func itemDetails(_ items: [Item]) async -> [ItemDetail] {
+        guard !items.isEmpty, let body = try? JSONSerialization.data(withJSONObject:
+            ["items": items.map { ["itemType": $0.bundle ? "Bundle" : "Asset", "id": $0.id] as [String: Any] }]) else { return [] }
+        for _ in 0..<2 {
+            var r = URLRequest(url: URL(string: "https://catalog.roblox.com/v1/catalog/items/details")!, timeoutInterval: 20)
+            r.httpMethod = "POST"
+            r.httpBody = body
+            r.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            r.setValue(await Token.shared.value, forHTTPHeaderField: "x-csrf-token")
+            guard let (data, reply) = try? await URLSession.shared.data(for: r), let http = reply as? HTTPURLResponse else { return [] }
+            if http.statusCode == 403, let t = http.value(forHTTPHeaderField: "x-csrf-token") {
+                await Token.shared.set(t)
+                continue
+            }
+            return http.statusCode == 200 ? Parse.itemDetails(data) : []
+        }
+        return []
+    }
+
+    static func recommended(for item: Item, bundleType: Int?) async -> [Item] {
+        let u = item.bundle
+            ? url("https://catalog.roblox.com/v2/recommendations/bundles", ["bundleTypeId": "\(bundleType ?? 1)", "contextBundleId": "\(item.id)", "numItems": "12"])
+            : url("https://catalog.roblox.com/v2/recommendations/assets", ["assetTypeId": "\(item.kind ?? 8)", "contextAssetId": "\(item.id)", "numItems": "12"])
+        guard let data = try? await fetch(u) else { return [] }
+        let ids = Parse.recommendations(data).filter { $0 != item.id }
+        let found = await itemDetails(ids.map { Item(id: $0, bundle: item.bundle, name: "", price: nil) }).map(\.item)
+        return await withThumbs(found)
+    }
+
     static func bigThumb(_ item: Item) async -> String? {
-        guard !item.bundle else { return nil }
+        if item.bundle {        // bundles come at 420 at most
+            return await pictures("https://thumbnails.roblox.com/v1/bundles/thumbnails", ["bundleIds": "\(item.id)", "size": "420x420", "format": "Png"])[item.id]
+        }
         return await pictures("https://thumbnails.roblox.com/v1/assets", ["assetIds": "\(item.id)", "size": "700x700", "format": "Png"])[item.id]
     }
 
@@ -264,6 +295,12 @@ enum Roblox {
         let wide = await gamePictures(Array(Set(sorts.flatMap { $0.games.prefix(12).map(\.id) }))).wide
         return sorts.map { s in (s.title, s.games.prefix(12).map { var g = $0; g.wide = wide[g.id]; return g }) }
     }
+}
+
+actor Token {
+    static let shared = Token()
+    private(set) var value = ""
+    func set(_ v: String) { value = v }
 }
 
 actor Pictures {

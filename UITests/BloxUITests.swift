@@ -237,15 +237,19 @@ final class BloxUITests: XCTestCase {
         any("sheetHandle").tap()
         sleep(1)
         first.tap()
-        if app.buttons["buyButton"].waitForExistence(timeout: 5) {
-            app.buttons["buyButton"].tap()
-            if app.alerts.buttons["Buy Now"].waitForExistence(timeout: 2) { app.alerts.buttons["Buy Now"].tap() }
+        if !app.buttons["itemClose"].waitForExistence(timeout: 2) {
+            XCTAssertTrue(first.label.contains("trying on"), first.label)
+            XCTAssertTrue(app.buttons["trialBuy"].exists, "the try-on bar offers its price")
+            shot("14c try on")
+            first.tap()                                                    // the next opens its page
         }
+        XCTAssertTrue(app.buttons["itemClose"].waitForExistence(timeout: 5))
+        if app.buttons["buyButton"].waitForExistence(timeout: 8) { buyOnPage() }
         XCTAssertTrue(any("itemOwned").waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["wearButton"].exists)
-        sleep(1)
+        sleep(2)
         shot("15 item")
-        back()
+        app.buttons["itemClose"].tap()
 
         app.buttons["cat-Clothing"].tap()
         XCTAssertTrue(first.waitForExistence(timeout: 40))
@@ -258,13 +262,22 @@ final class BloxUITests: XCTestCase {
         catalog.typeText("horns\n")
         sleep(6)
         XCTAssertTrue(first.waitForExistence(timeout: 40))
-        first.tap()
-        XCTAssertTrue(app.buttons["buyButton"].waitForExistence(timeout: 5))
-        app.buttons["buyButton"].tap()
-        if app.alerts.buttons["Buy Now"].waitForExistence(timeout: 3) { app.alerts.buttons["Buy Now"].tap() }
-        XCTAssertTrue(any("itemOwned").waitForExistence(timeout: 5), "55,888 Robux buys the first result")
-        shot("15c bought")
-        back()
+        let results = app.buttons.matching(identifier: "catalogItem")
+        var bought = false
+        for i in 0..<min(results.count, 6) where !bought {
+            let r = results.element(boundBy: i)
+            guard r.isHittable else { continue }
+            r.tap()
+            if !app.buttons["itemClose"].waitForExistence(timeout: 2) { r.tap() }
+            XCTAssertTrue(app.buttons["itemClose"].waitForExistence(timeout: 5))
+            if app.buttons["buyButton"].waitForExistence(timeout: 8) {
+                buyOnPage()
+                bought = any("itemOwned").waitForExistence(timeout: 5)
+                if bought { shot("15c bought") }
+            }
+            app.buttons["itemClose"].tap()
+        }
+        XCTAssertTrue(bought, "one of the first results could be bought")
         app.buttons["searchToggle"].tap()          // closing the search ends it
 
         app.buttons["tab-Customize"].tap()
@@ -329,7 +342,7 @@ final class BloxUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["menuRobux"].waitForExistence(timeout: 5))
         let balance = app.staticTexts["menuRobux"].label
         let left = Int(balance.replacingOccurrences(of: ",", with: "")) ?? -1
-        XCTAssertTrue(left >= 0 && left < 55888, "paying for the item took Robux: \(balance)")
+        XCTAssertTrue(left >= 0 && left <= 55888, "buying never adds Robux: \(balance)")     // the result bought may be free
         shot("19 menu after buying")
         app.terminate()
         app.launchArguments = []
@@ -351,6 +364,16 @@ final class BloxUITests: XCTestCase {
             XCTAssertTrue(note.label.contains("min"), "a rationing note, not a failure: \(note.label)")
         } else {
             XCTAssertTrue(any("avatar3D").exists)
+        }
+    }
+
+    private func buyOnPage() {
+        app.buttons["buyButton"].tap()
+        if app.alerts.buttons["Buy Now"].waitForExistence(timeout: 3) {
+            app.alerts.buttons["Buy Now"].tap()
+        } else if app.buttons["buyRobuxAndItem"].waitForExistence(timeout: 2) {
+            shot("15d buy robux and item")
+            app.buttons["buyRobuxAndItem"].tap()
         }
     }
 

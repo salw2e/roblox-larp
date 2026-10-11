@@ -152,6 +152,31 @@ public struct GameEvent: Equatable, Sendable {
     }
 }
 
+public struct ItemDetail: Equatable, Sendable {
+    public var item: Item
+    public var favorites: Int
+    public var type: String
+    public var description: String
+    public var parts: [Item]
+    public var bundleType: Int?
+
+    public var placement: String {
+        if item.bundle { return bundleType == 1 ? "Body | Full Body" : "Avatars" }
+        let shelf = Shelf.of(item)
+        guard let slot = shelf.slots.first(where: { $0.holds(item) }), slot.name != "Other" else { return shelf.rawValue }
+        return "\(shelf.rawValue) | \(slot.name)"
+    }
+}
+
+public func robuxPacksFor(shortfall: Int) -> [(robux: Int, price: String, better: Bool)] {
+    let packs: [(Int, String)] = [(40, "$0.49"), (80, "$0.99"), (320, "$3.99"), (400, "$4.99"), (800, "$9.99"), (1_200, "$14.99"),
+                                  (1_700, "$19.99"), (3_150, "$34.99"), (4_500, "$49.99"), (10_000, "$99.99"), (22_500, "$199.99")]
+    guard shortfall > 0, let i = packs.firstIndex(where: { $0.0 >= shortfall }) else { return [] }
+    var out = [(robux: packs[i].0, price: packs[i].1, better: false)]
+    if i + 1 < packs.count { out.append((robux: packs[i + 1].0, price: packs[i + 1].1, better: true)) }
+    return out
+}
+
 public struct ItemInfo: Equatable, Sendable {
     public var description: String
     public var type: String
@@ -174,6 +199,37 @@ extension Parse {
                         visits: g.visits ?? 0, favorites: g.favoritedCount ?? 0, maxPlayers: g.maxPlayers ?? 0,
                         genre: g.genre_l1 ?? g.genre ?? "", created: day(g.created), updated: day(g.updated),
                         creatorVerified: g.creator?.hasVerifiedBadge ?? false)
+    }
+
+    public static func itemDetails(_ data: Data) -> [ItemDetail] {
+        struct R: Decodable {
+            struct T: Decodable { let taxonomyName: String? }
+            struct P: Decodable { let id: Int64; let name: String; let type: String?; let assetType: Int? }
+            struct I: Decodable {
+                let id: Int64; let itemType: String; let name: String; let description: String?; let creatorName: String?
+                let creatorHasVerifiedBadge: Bool?; let price: Int?; let lowestPrice: Int?; let lowestResalePrice: Int?
+                let priceStatus: String?; let isOffSale: Bool?; let itemRestrictions: [String]?; let unitsAvailableForConsumption: Int?
+                let favoriteCount: Int?; let assetType: Int?; let bundleType: Int?; let taxonomy: [T]?; let bundledItems: [P]?
+            }
+            let data: [I]
+        }
+        guard let r = try? JSONDecoder().decode(R.self, from: data) else { return [] }
+        return r.data.map { i in
+            let collectible = !Set(i.itemRestrictions ?? []).isDisjoint(with: ["Collectible", "Limited", "LimitedUnique"])
+            let soldOut = collectible && (i.unitsAvailableForConsumption ?? 0) == 0 && (i.lowestResalePrice ?? 0) > 0
+            let offSale = i.isOffSale == true || i.priceStatus == "Off Sale"
+            let price = offSale ? nil : soldOut ? i.lowestResalePrice : (i.price ?? i.lowestPrice)
+            let item = Item(id: i.id, bundle: i.itemType == "Bundle", name: i.name, creator: i.creatorName ?? "Roblox", price: price,
+                            creatorVerified: i.creatorHasVerifiedBadge, limited: collectible ? true : nil, kind: i.assetType)
+            let parts = (i.bundledItems ?? []).filter { $0.type == "Asset" }.map { Item(id: $0.id, name: $0.name, price: nil, kind: $0.assetType) }
+            return ItemDetail(item: item, favorites: i.favoriteCount ?? 0, type: i.taxonomy?.first?.taxonomyName ?? "",
+                              description: i.description ?? "", parts: parts, bundleType: i.bundleType)
+        }
+    }
+
+    public static func recommendations(_ data: Data) -> [Int64] {
+        struct R: Decodable { let data: [Int64] }
+        return (try? JSONDecoder().decode(R.self, from: data))?.data ?? []
     }
 
     public static func events(_ data: Data, now: Date = Date()) -> [GameEvent] {

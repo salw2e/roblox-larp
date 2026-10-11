@@ -361,6 +361,35 @@ final class ParseTests: XCTestCase {
         XCTAssertEqual(p.robux, 0)
     }
 
+    func testItemPageDetails() throws {
+        let all = Parse.itemDetails(try fixture("items-details"))
+        XCTAssertEqual(all.map(\.item.name), ["John", "Junkbot", "Winning Blueberry Head", "Builders Club Hard Hat"])
+        let john = all[0]
+        XCTAssertTrue(john.item.bundle)
+        XCTAssertEqual(john.type, "Characters")
+        XCTAssertEqual(john.placement, "Body | Full Body")
+        XCTAssertGreaterThan(john.favorites, 5_000_000)
+        XCTAssertTrue(john.parts.contains { $0.name == "John Shirt" && $0.kind == 11 })
+        XCTAssertEqual(john.item.price, 0)
+        let blueberry = all[2]
+        XCTAssertEqual(blueberry.item.price, 0)
+        XCTAssertEqual(blueberry.item.limited, true)
+        XCTAssertEqual(blueberry.placement, "Accessories | Head")
+        let hat = all[3]
+        XCTAssertNil(hat.item.price, "isOffSale: not for sale")
+        XCTAssertEqual(hat.type, "Head Accessories")
+        XCTAssertEqual(hat.item.creatorVerified, true)
+        XCTAssertEqual(Parse.recommendations(try fixture("recommendations")).first, 16595564026)
+        XCTAssertEqual(Parse.itemDetails(Data("{}".utf8)), [])
+
+        let packs = robuxPacksFor(shortfall: 175)               // Sal's screenshot: 320 for $3.99, then 400 "Better value"
+        XCTAssertEqual(packs.map(\.robux), [320, 400])
+        XCTAssertEqual(packs.map(\.better), [false, true])
+        XCTAssertEqual(robuxPacksFor(shortfall: 40).first?.robux, 40)
+        XCTAssertEqual(robuxPacksFor(shortfall: 22_500).count, 1)
+        XCTAssertTrue(robuxPacksFor(shortfall: 0).isEmpty && robuxPacksFor(shortfall: 30_000).isEmpty)
+    }
+
     func testPlusBackgrounds() throws {
         let plus = Parse.plusBackgrounds(try fixture("backgrounds-roblox"))
         XCTAssertEqual(plus.map(\.name), ["Soundwave", "Stargazer", "Stardust Stage", "Cotton Candy Horizon"])
