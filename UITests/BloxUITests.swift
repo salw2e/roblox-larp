@@ -76,14 +76,14 @@ final class BloxUITests: XCTestCase {
         XCTAssertTrue(app.images["avatarImage"].exists)
         XCTAssertTrue(any("wornItem").exists)
         sleep(2)
-        shot("07 profile")
+        shot("07 profile")                         // the half sheet over Home
         reveal(app.buttons["viewFullProfile"])
         shot("08 profile lower")
         app.buttons["viewFullProfile"].tap()
         sleep(2)
         shot("09 full profile")
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        app.swipeDown(velocity: .fast)
+        XCTAssertTrue(app.buttons["closeProfile"].waitForExistence(timeout: 5), "full screen shows the X")
         app.buttons["closeProfile"].tap()
 
         XCTAssertTrue(any("homeFriend").waitForExistence(timeout: 5))

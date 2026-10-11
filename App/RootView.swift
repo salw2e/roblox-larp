@@ -13,16 +13,19 @@ struct RootView: View {
     @State private var tab = MainTab.home
     @State private var menu = false
     @State private var page: Page?
+    @State private var profileOpen = false
+    @State private var profileSize = PresentationDetent.height(RootView.profileHalf)
+    static let profileHalf: CGFloat = 549
     @GestureState private var menuPull: CGFloat = 0
 
     var body: some View {
         ZStack(alignment: .leading) {
             VStack(spacing: 0) {
                 ZStack {
-                    kept(.home) { HomeView(openMenu: openMenu, open: { page = $0 }) }
+                    kept(.home) { HomeView(openMenu: openMenu, open: { open($0) }) }
                     kept(.moments) { MomentsView() }
                     kept(.chat) { ChatView() }
-                    kept(.me) { AppearanceView(openMenu: openMenu, openProfile: { page = .profile }) }
+                    kept(.me) { AppearanceView(openMenu: openMenu, openProfile: { open(.profile) }) }
                 }
                 .frame(maxHeight: .infinity)
                 bar
@@ -33,7 +36,7 @@ struct RootView: View {
                     .accessibilityIdentifier("menuShade")
                 MenuView { p in
                     closeMenu()
-                    page = p
+                    open(p)
                 }
                 .offset(x: min(menuPull, 0))
                 .simultaneousGesture(
@@ -49,16 +52,39 @@ struct RootView: View {
             }
         }
         .background(Color.bg)
+        .sheet(isPresented: $profileOpen) {
+            NavigationStack {
+                ProfileView(full: profileSize == .large) {
+                    profileOpen = false
+                    tab = .me
+                }
+            }
+            .environmentObject(store)
+            .presentationDetents([.height(Self.profileHalf), .large], selection: $profileSize)
+            .presentationDragIndicator(.hidden)
+            .presentationCornerRadius(16)
+            .presentationBackground(Color.bg)
+        }
         .fullScreenCover(item: $page) { p in
             NavigationStack {
                 switch p {
-                case .profile: ProfileView()
+                case .profile: EmptyView()
                 case .inventory: FullProfileView().closeButton()
                 case .favorites: FavoritesView().closeButton()
                 case .friends: FriendsListView().closeButton()
                 }
             }
             .environmentObject(store)
+        }
+    }
+
+    private func open(_ p: Page?) {
+        guard let p else { return }
+        if p == .profile {
+            profileSize = .height(Self.profileHalf)
+            profileOpen = true
+        } else {
+            page = p
         }
     }
 
