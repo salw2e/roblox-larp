@@ -12,6 +12,7 @@ struct AppearanceView: View {
     @State private var searching = false
     @State private var query = ""
     @State private var category = "All"
+    @State private var sub: String?
     @State private var sort = Sort.relevance
     @State private var results: [Item] = []
     @State private var styles: [Item] = []
@@ -24,6 +25,8 @@ struct AppearanceView: View {
     @State private var priceProblem = ""
     @State private var raised = false
     @State private var shelf = Shelf.avatars    // Customize's tab
+    @State private var slotPicked: [Shelf: String] = [:]
+    @State private var suggested: [String: [Item]] = [:]
     @State private var naming = false
     @State private var outfitName = ""
     @State private var details: Outfit?
@@ -36,9 +39,25 @@ struct AppearanceView: View {
 
     private static let categories: [String: String] = [
         "Avatars": "kfHzJwaNYM8s2CWRqYUhRa", "Backgrounds": "ijFKKMZq6jV4gkJQC4v7L1",
-        "Body": "mwkR3QvDBVzYk4o9RAVVa2", "Clothing": "5G3bZScC9Hxp2D2EUtGSNm",
+        "Body": "mwkR3QvDBVzYk4o9RAVVa2", "Clothing": "5G3bZScC9Hxp2D2EUtGSNm", "Accessories": "wNYJso48d1XnhMyFWT3oX3",
+        "Animations": "9fPpW3SJ6UkieQU5jJ4dgP", "Makeup": "dBM565GC3YYTdi9UKvr87Z",
     ]
-    private let order = ["All", "Avatars", "Backgrounds", "Body", "Clothing"]
+    private static let subcategories: [String: [(name: String, id: String)]] = [
+        "Body": [("Full Bodies", "kfHzJwaNYM8s2CWRqYUhRa"), ("Hair", "d6a7M7r9MMrpf7z7VxW9ZS"), ("Heads", "s5NLP7BS9PRLKvUVca4XKg")],
+        "Clothing": [("Shirts", "pJ71PxerdfEuarTNRtSZYs"), ("T-Shirts", "fLRqNzGqjX7MzcqeMro9hc"), ("Sweaters", "31M6WgEMmyq9TTfk3pUUpZ"),
+                     ("Jackets", "kPZpEVNdProGcqMbj1jDKJ"), ("Pants", "1MvRtnnsy2FJWmkErSBxBa"), ("Dresses & Skirts", "oSSCBSqkQPZu6HataAUAxB"),
+                     ("Bodysuits", "u5jaNLyf2ZhvR95GS37ui5"), ("Shorts", "etAPg889P243JyjdbZCXhw"), ("Shoes", "uLRgNoJ1awZkhpVw9WyvKo"),
+                     ("Classic Shirts", "2a2rf9qyeTd8W5iegK2Prc"), ("Classic T-Shirts", "43H35nJKHzCQM63q3wPaJG"),
+                     ("Classic Pants", "49cFNAJWuwiJJVUSADG6DR")],
+        "Accessories": [("Head", "thukPQUFe5EHxRrtsgq43u"), ("Face", "b5rkQhGSfwhfTK177y6ERa"), ("Neck", "tvckLAbtDAGwF9Y2sph2Ce"),
+                        ("Shoulder", "8i1sggNTrxoN799hpRrR1S"), ("Front", "kj535RzJxHTCnXPBLo5KaE"), ("Back", "7yGywzp5JeDsNjhXWJqSw3"),
+                        ("Waist", "6jYQPDtkVwQZcKtvVpyYAN"), ("Gear", "gUtxkR951g3VPgRkb5ay8u")],
+        "Animations": [("Bundles", "whf6kUVBwk2xdwKUmRYN6G"), ("Emotes", "ioNxAT977DFP2hMnAJbsbF")],
+        "Makeup": [("Looks", "dBM565GC3YYTdi9UKvr87Z"), ("Eyes", "1e7vNivWk2To6BdYJt5RGF"), ("Lips", "c3PEmGVddwsc6bKqtuR7rC"),
+                   ("Face", "tm9VSS61JdHJGtKvbjKa4D"), ("Eyelashes", "4zqsNnG4Tp7xZThAEpv2dN"), ("Eyebrows", "1cMbsG373EMD4ncRqGhtyZ")],
+    ]
+    private let order = ["All", "Avatars", "Backgrounds", "Body", "Clothing", "Accessories", "Animations", "Makeup"]
+    private var taxonomy: String? { sub ?? Self.categories[category] }
     private let grid = [GridItem(.flexible(), spacing: 12, alignment: .top), GridItem(.flexible(), spacing: 12, alignment: .top),
                         GridItem(.flexible(), alignment: .top)]
 
@@ -170,7 +189,7 @@ struct AppearanceView: View {
                     .accessibilityIdentifier("sheetHandle").accessibilityLabel(raised ? "Lower the list" : "Raise the list")
                     .accessibilityAddTraits(.isButton)
                 if searching && !customize { searchBar }
-                if customize { shelfTabs } else { categoryTabs }
+                if customize { shelfTabs } else { categoryTabs; subTabs }
             }
             .simultaneousGesture(sheetDrag)
             ScrollView {
@@ -202,6 +221,28 @@ struct AppearanceView: View {
             Rectangle().fill(on ? Color.ink : .clear).frame(height: 2.5)
         }
         .fixedSize()
+    }
+
+    @ViewBuilder
+    private var subTabs: some View {
+        if let subs = Self.subcategories[category] {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 23) {
+                    ForEach(subs, id: \.id) { s in
+                        Button {
+                            sub = sub == s.id ? nil : s.id
+                            Task { await load() }
+                        } label: {
+                            Text(s.name).font(.builder(14.5, .medium)).foregroundStyle(sub == s.id ? Color.ink : Color.dim)
+                        }
+                        .accessibilityIdentifier("sub-\(s.name)")
+                    }
+                }
+                .frame(height: 36)
+            }
+            .contentMargins(.horizontal, 18)
+            .padding(.top, 4)
+        }
     }
 
     private var shelfTabs: some View {
@@ -263,6 +304,7 @@ struct AppearanceView: View {
         let front = category == "All" && query.isEmpty && sort == .relevance
         let assets = sorted.filter { !$0.bundle }
         return VStack(alignment: .leading, spacing: 0) {
+            if category == "Backgrounds" && query.isEmpty { plusBanner.padding(.top, 10) }
             Text(front ? "Recommended For You" : query.isEmpty ? category : "Results").font(.builder(20, .bold))
                 .frame(height: 24).padding(.top, 10.5).padding(.bottom, 12)
             if loading && results.isEmpty { ProgressView().tint(Color.faint).frame(maxWidth: .infinity).padding(.bottom, 12) }
@@ -282,6 +324,18 @@ struct AppearanceView: View {
         }
         .padding(.leading, 15).padding(.trailing, 14).padding(.bottom, 30)
         .buttonStyle(PressStyle())
+    }
+
+    private var plusBanner: some View {
+        HStack(spacing: 8) {
+            Icon("premium", size: 16)
+            Text("Unlock free exclusive backgrounds with Plus.").font(.builder(12)).lineLimit(1).minimumScaleFactor(0.8)
+            Spacer(minLength: 4)
+            Button { open(.robux) } label: { Text("Subscribe").font(.builder(12, .medium)).underline() }
+                .accessibilityIdentifier("plusSubscribe")
+        }
+        .padding(.horizontal, 12).frame(height: 38)
+        .background(Color.tile, in: RoundedRectangle(cornerRadius: 8))
     }
 
     private var exploreStyles: some View {
@@ -321,11 +375,23 @@ struct AppearanceView: View {
                     Text("You May Also Like").font(.builder(20, .bold)).frame(height: 24).padding(.top, 30).padding(.bottom, 12)
                     LazyVGrid(columns: grid, spacing: 20) { ForEach(styles) { catalogTile($0) } }
                 }
-            } else if mine.isEmpty {
-                Text("You don't have any \(shelf.rawValue.lowercased()) yet. Get some in the Marketplace.")
-                    .font(.builder(14.5)).foregroundStyle(Color.faint).padding(.top, 16)
-            } else {
-                owned(mine).padding(.top, 11)
+            } else if let slot = currentSlot {
+                slotRow.padding(.top, 11)
+                let here = mine.filter(slot.holds)
+                if here.isEmpty {
+                    Text("No \(plural(slot.name))").font(.builder(16, .medium)).frame(maxWidth: .infinity).padding(.top, 30)
+                        .accessibilityIdentifier("slotEmpty")
+                } else {
+                    owned(here).padding(.top, 20)
+                }
+                suggestions(slot.taxonomy)
+            } else {                                // Backgrounds: no slots
+                if mine.isEmpty {
+                    Text("No Backgrounds").font(.builder(16, .medium)).frame(maxWidth: .infinity).padding(.top, 30)
+                } else {
+                    owned(mine).padding(.top, 11)
+                }
+                suggestions("ijFKKMZq6jV4gkJQC4v7L1")
             }
         }
         .padding(.leading, 15).padding(.trailing, 14).padding(.bottom, 30)
@@ -350,6 +416,52 @@ struct AppearanceView: View {
                 if let o = renaming, !n.isEmpty, let i = store.profile.outfits.firstIndex(where: { $0.id == o.id }) { store.profile.outfits[i].name = n }
             }
             Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    private var currentSlot: Slot? {
+        let slots = shelf.slots
+        return slots.first { $0.name == slotPicked[shelf] } ?? slots.first
+    }
+
+    private func plural(_ name: String) -> String {
+        name.hasSuffix("s") || ["Hair", "Outerwear", "Gear", "Other", "Full Body", "Head", "Face", "Neck", "Back", "Waist", "Shoulder", "Front"].contains(name)
+            ? name : name + "s"
+    }
+
+    private var slotRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: 9) {
+                ForEach(shelf.slots, id: \.self) { s in
+                    let on = s == currentSlot
+                    let worn = store.profile.items.first { $0.wearing && s.holds($0) }
+                    Button { slotPicked[shelf] = s.name } label: {
+                        VStack(spacing: 6) {
+                            RoundedRectangle(cornerRadius: 10).fill(Color.tile).frame(width: 64, height: 64)
+                                .overlay {
+                                    if let worn { RemoteImage(url: worn.thumb, fill: false).padding(5) }
+                                    else { Image(systemName: "plus").font(.system(size: 14, weight: .medium)).foregroundStyle(Color.faint) }
+                                }
+                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(on ? Color.white : .clear, lineWidth: 2))
+                            Text(s.name).font(.builder(10.5)).lineLimit(1).frame(width: 70)
+                        }
+                    }
+                    .accessibilityIdentifier("slot-\(s.name)")
+                }
+            }
+        }
+        .padding(.leading, -15).padding(.trailing, -14).contentMargins(.leading, 15).contentMargins(.trailing, 14)
+    }
+
+    private func suggestions(_ taxonomy: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let items = suggested[taxonomy], !items.isEmpty {
+                Text("You May Also Like").font(.builder(20, .bold)).frame(height: 24).padding(.top, 34).padding(.bottom, 12)
+                LazyVGrid(columns: grid, spacing: 20) { ForEach(items.prefix(12)) { catalogTile($0) } }
+            }
+        }
+        .task(id: taxonomy) {
+            if suggested[taxonomy] == nil, let page = try? await Roblox.search("", category: taxonomy) { suggested[taxonomy] = page.items }
         }
     }
 
@@ -420,6 +532,7 @@ struct AppearanceView: View {
     private func choose(_ c: String) {
         customize = false
         category = c
+        sub = nil
         query = ""
         Task { await load() }
     }
@@ -438,7 +551,7 @@ struct AppearanceView: View {
     private func load() async {
         asked += 1
         let mine = asked
-        let q = query.trimmingCharacters(in: .whitespaces), taxonomy = Self.categories[category]
+        let q = query.trimmingCharacters(in: .whitespaces), taxonomy = self.taxonomy
         loading = true
         failure = nil
         for (attempt, pause) in [0, 2, 5].enumerated() {
@@ -467,7 +580,7 @@ struct AppearanceView: View {
         let mine = asked
         loading = true
         defer { loading = false }
-        guard let page = try? await Roblox.search(query.trimmingCharacters(in: .whitespaces), category: Self.categories[category], cursor: cursor),
+        guard let page = try? await Roblox.search(query.trimmingCharacters(in: .whitespaces), category: taxonomy, cursor: cursor),
               mine == asked else { return }
         results += page.items.filter { new in !results.contains { $0.same(new) } }
         next = page.next

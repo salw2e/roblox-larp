@@ -336,6 +336,18 @@ final class ParseTests: XCTestCase {
         XCTAssertEqual(Shelf.of(Item(id: 1, name: "", price: 0, kind: 92)), .backgrounds)
         XCTAssertEqual(Shelf.of(Item(id: 1, bundle: true, name: "", price: 0)), .avatars)
         XCTAssertEqual(Shelf.of(Item(id: 1, name: "", price: 0)), .accessories)             // type not known yet
+        XCTAssertEqual(Shelf.of(Item(id: 1, name: "", price: 0, kind: 61)), .animations)    // an emote
+        for shelf in [Shelf.body, .clothing, .accessories, .animations] {
+            for kind in [2, 8, 11, 12, 17, 18, 19, 27, 28, 29, 30, 31, 41, 42, 43, 44, 45, 46, 47, 48, 56, 61, 64, 65, 66, 67, 68, 69, 70, 71, 72, 76, 77, 78, 79] {
+                let item = Item(id: 1, name: "", price: 0, kind: kind)
+                guard Shelf.of(item) == shelf else { continue }
+                XCTAssertEqual(shelf.slots.filter { $0.holds(item) }.count, 1, "type \(kind) on \(shelf)")
+            }
+        }
+        let unknown = Item(id: 1, name: "", price: 0)
+        XCTAssertEqual(Shelf.accessories.slots.filter { $0.holds(unknown) }.map(\.name), ["Other"])
+        XCTAssertEqual(Shelf.clothing.slots.first?.name, "Top")
+        XCTAssertTrue(Shelf.avatars.slots.isEmpty && Shelf.backgrounds.slots.isEmpty)
     }
 
     func testSendingRobux() {

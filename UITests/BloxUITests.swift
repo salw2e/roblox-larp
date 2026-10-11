@@ -278,9 +278,14 @@ final class BloxUITests: XCTestCase {
         XCTAssertTrue(app.buttons["outfit"].label.contains("worn"), app.buttons["outfit"].label)
         sleep(3)
         shot("16a avatars")
-        for shelf in ["Accessories", "Clothing", "Body"] where !app.buttons["inventoryItem"].exists {
+        find: for shelf in ["Accessories", "Clothing", "Body"] {
             app.buttons["shelf-\(shelf)"].tap()
-            _ = app.buttons["inventoryItem"].firstMatch.waitForExistence(timeout: 8)     // types are looked up first
+            if app.buttons["inventoryItem"].firstMatch.waitForExistence(timeout: 8) { break }     // types are looked up first
+            let slots = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'slot-'"))
+            for i in 0..<slots.count where slots.element(boundBy: i).isHittable {
+                slots.element(boundBy: i).tap()
+                if app.buttons["inventoryItem"].firstMatch.waitForExistence(timeout: 2) { break find }
+            }
         }
         XCTAssertTrue(app.buttons["inventoryItem"].firstMatch.waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["undoWear"].isEnabled)
