@@ -1,0 +1,79 @@
+name: build
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      redraw:
+        description: "Also run Update avatar for real (uses 2 of Roblox's 6 hourly drawings)"
+        type: boolean
+        default: false
+      skip_ui:
+        description: "Build the .ipa without the simulator test (when Roblox itself is down)"
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  ipa:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: BloxKit tests
+        run: cd Packages/BloxKit && swift test
+      - name: Generate project
+        run: brew install xcodegen && xcodegen generate
+      - name: The avatar service's key, for the simulator test only
+        if: ${{ !inputs.skip_ui }}
+        run: |
+          JWT=$(curl -sf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=blox-api" | python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])')
+          KEY=$(curl -sf -X POST -H "Authorization: Bearer $JWT" https://justsal.xyz/blox-ci-key | python3 -c 'import json,sys; print(json.load(sys.stdin)["key"])')
+          echo "::add-mask::$KEY"
+          sed -i '' "s#/blox-api/KEY#/blox-api/$KEY#" project.yml && xcodegen generate
+          echo "BLOX_KEY=$KEY" >> "$GITHUB_ENV"
+      - name: UI test in the simulator
+        if: ${{ !inputs.skip_ui }}
+        env:
+          TEST_RUNNER_BLOX_TEST_REDRAW: ${{ inputs.redraw && '1' || '0' }}
+        run: |
+          set -o pipefail
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)["devices"]
+          ios = sorted((k for k in d if ".iOS-" in k), key=lambda k: [int(x) for x in k.split(".iOS-")[1].split("-")])
+          phones = [x for x in d[ios[-1]] if x["name"].startswith("iPhone") and "Pro Max" in x["name"]] or [x for x in d[ios[-1]] if x["name"].startswith("iPhone")]
+          print(phones[0]["udid"]); print(phones[0]["name"], ios[-1], file=sys.stderr)')
+          xcodebuild test -project Blox.xcodeproj -scheme Blox -destination "id=$UDID" -resultBundlePath build/ui.xcresult \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee test-log.txt | grep -E "error:|Test Case|TEST (SUCCEEDED|FAILED)|XCTAssert" || true
+          grep -q "TEST SUCCEEDED" test-log.txt
+      - name: Screenshots
+        if: always()
+        run: xcrun xcresulttool export attachments --path build/ui.xcresult --output-path build/shots || true
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: blox-screenshots, path: build/shots, retention-days: 14, if-no-files-found: ignore }
+      - name: Archive (unsigned)
+        run: |
+          set -o pipefail
+          git checkout -- project.yml && xcodegen generate
+          xcodebuild -project Blox.xcodeproj -scheme Blox -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath build/Blox.xcarchive \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" archive 2>&1 | tee build-log.txt | grep -E "error:|warning: .*Swift|ARCHIVE" || true
+          test -d build/Blox.xcarchive/Products/Applications/Blox.app
+          test -f build/Blox.xcarchive/Products/Applications/Blox.app/Info.plist
+          plutil -extract BloxAPI raw build/Blox.xcarchive/Products/Applications/Blox.app/Info.plist | grep -q '/blox-api/KEY$'
+      - name: Package ipa
+        run: |
+          mkdir -p build/Payload && cp -R build/Blox.xcarchive/Products/Applications/Blox.app build/Payload/
+          cd build && zip -qry Blox.ipa Payload && ls -la Blox.ipa
+      - uses: actions/upload-artifact@v4
+        with: { name: Blox-ipa, path: build/Blox.ipa, retention-days: 30 }
+      - name: Keep the key out of the uploaded logs
+        if: failure()
+        run: '[ -z "$BLOX_KEY" ] || sed -i "" "s#$BLOX_KEY#***#g" *-log.txt || true'
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with: { name: blox-logs, path: "*-log.txt", retention-days: 7 }

@@ -5,7 +5,7 @@ import numpy as np
 
 COOKIE_FILE = os.environ.get("ROBLOX_COOKIE_FILE", "cookie.txt")
 KEY_FILE = os.environ.get("BLOX_KEY_FILE", "key.txt")
-CI_REPO = "salw2e/jynx-ios"
+CI_REPO = "salw2e/roblox-larp"
 CACHE = os.environ.get("BLOX_CACHE", "cache")
 PUBLIC = os.environ.get("BLOX_PUBLIC", "")
 UA = "Mozilla/5.0"
@@ -389,7 +389,7 @@ def ci_may_have_key(token, claims=None):
         claims = jwt.decode(token, key, algorithms=["RS256"], audience="blox-api", issuer=GITHUB_ISSUER)
     return (claims.get("repository") == CI_REPO and claims.get("ref") == "refs/heads/main"
             and claims.get("event_name") in ("push", "workflow_dispatch")
-            and str(claims.get("workflow_ref", "")).startswith(CI_REPO + "/.github/workflows/blox.yml@"))
+            and str(claims.get("workflow_ref", "")).startswith(CI_REPO + "/.github/workflows/build.yml@"))
 
 badge_cache = {}
 
@@ -427,7 +427,7 @@ def demo():
     assert "map_Kd tex0.png" in m and "map_d" not in m and "map_Ka" not in m
     assert "Kd 1 1 1" in m.split("newmtl B")[0] and "Kd 0.2 0.3 0.4" in m.split("newmtl B")[1]     # plain colours survive
     ok = {"repository": CI_REPO, "ref": "refs/heads/main", "event_name": "push",
-          "workflow_ref": CI_REPO + "/.github/workflows/blox.yml@refs/heads/main"}
+          "workflow_ref": CI_REPO + "/.github/workflows/build.yml@refs/heads/main"}
     assert ci_may_have_key("", ok)
     for change in ({"repository": "someone/jynx-ios"}, {"ref": "refs/heads/x"}, {"event_name": "pull_request"},
                    {"workflow_ref": CI_REPO + "/.github/workflows/evil.yml@refs/heads/main"}, {"repository": None}):
