@@ -28,6 +28,10 @@ struct ProfileView: View {
             }
             .padding(.horizontal, 22)
         }
+        .background(alignment: .top) {
+            LinearGradient(colors: [Color(white: 0.3), Color.bg], startPoint: .top, endPoint: .bottom)
+                .frame(height: 420).ignoresSafeArea(edges: .top)
+        }
         .background(Color.bg)
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $editing) { EditProfileView() }
@@ -44,10 +48,6 @@ struct ProfileView: View {
             .accessibilityIdentifier("closeProfile")
             .padding(.top, 8)
         }
-        .background(
-            LinearGradient(colors: [Color(white: 0.3), Color.bg], startPoint: .top, endPoint: .bottom)
-                .padding(.horizontal, -22).ignoresSafeArea(edges: .top)
-        )
     }
 
     private var header: some View {

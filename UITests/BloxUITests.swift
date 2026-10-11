@@ -52,6 +52,7 @@ final class BloxUITests: XCTestCase {
         type("8", into: app.textFields["requestsField"])
         type("51", into: app.textFields["friendsBadgeField"])
         type("13", into: app.textFields["messagesField"])
+        XCTAssertEqual(app.textFields["messagesField"].value as? String, "13")   // not "013"
         shot("05 friends and badges")
 
         reveal(app.buttons["manageGames"])

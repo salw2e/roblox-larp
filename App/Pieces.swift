@@ -194,7 +194,7 @@ struct NumberField: View {
             .keyboardType(.numberPad)
             .field()
             .accessibilityIdentifier(id)
-            .onAppear { text = "\(value)" }
+            .onAppear { text = value == 0 ? "" : "\(value)" }   // empty at 0, so typing doesn't give "011"
             .onChange(of: text) { _, t in value = number(from: t) }
     }
 }
