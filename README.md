@@ -25,3 +25,9 @@ cd Packages/BloxKit && swift test
   <source media="(min-width: 768px)" srcset="shots/edit-row.webp">
   <img src="shots/edit-grid.webp" width="100%" alt="edit profile, skin">
 </picture>
+
+## disclaimer
+
+not affiliated with roblox. roblox, its name, logo, fonts and icons belong to roblox corporation. this is a fan project, it's free and makes no money.
+
+if you're from roblox and want something changed or taken down, open an issue and it'll be done.
