@@ -690,6 +690,7 @@ struct FriendsListView: View {
     }
 }
 
+@MainActor
 private func personName(_ store: Store, _ id: Int64, _ person: Parse.Person?) -> (display: String, user: String, face: String?, online: Bool, status: String) {
     if let f = store.profile.friendList.first(where: { $0.id == id }) { return (f.displayName, f.name, f.headshot, f.online, f.status) }
     return (person?.displayName ?? "", person?.name ?? "", nil, false, "")
@@ -794,6 +795,7 @@ private func counts(_ them: Roblox.Someone?) -> some View {
     }
 }
 
+@MainActor
 private func moreMenu(store: Store, id: Int64, close: @escaping () -> Void) -> some View {
     Menu {
         if store.profile.friendList.contains(where: { $0.id == id }) {
