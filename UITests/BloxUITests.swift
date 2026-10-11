@@ -156,10 +156,19 @@ final class BloxUITests: XCTestCase {
 
     private func reveal(_ element: XCUIElement) {
         dismissKeyboard()
-        let limit = app.windows.firstMatch.frame.height * 0.55
-        for _ in 0..<14 {
-            if element.exists && element.isHittable && element.frame.maxY < limit { return }
-            app.swipeUp(velocity: .slow)
+        let window = app.windows.firstMatch
+        let top: CGFloat = 150, bottom = window.frame.height * 0.6
+        func drag(from a: CGFloat, to b: CGFloat) {
+            window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: a))
+                .press(forDuration: 0.05, thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: b)))
+        }
+        var last = CGRect.null
+        for _ in 0..<40 {
+            let f = element.exists ? element.frame : .null
+            if element.exists && element.isHittable && f.minY > top && f.maxY < bottom { return }
+            if element.exists && f == last { break }
+            last = f
+            if element.exists && f.minY <= top { drag(from: 0.45, to: 0.6) } else { drag(from: 0.6, to: 0.45) }
         }
         XCTAssertTrue(element.exists && element.isHittable, "could not scroll to \(element)")
     }

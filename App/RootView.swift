@@ -131,7 +131,7 @@ struct HomeView: View {
             Wordmark(size: 24).padding(.leading, -8)
             Spacer()
             Image(systemName: "magnifyingglass").font(.system(size: 23))
-            RobuxIcon(size: 25)
+            RobuxIcon(size: 22)
             Image(systemName: "bell").font(.system(size: 23))
                 .overlay(alignment: .topTrailing) { CountBubble(n: store.profile.notifications, size: 19).offset(x: 10, y: -10) }
         }
@@ -337,7 +337,7 @@ struct MenuView: View {
                 Spacer()
                 CountBubble(n: count, size: 22)
             }
-            .frame(height: 46)
+            .frame(height: 44)
             .contentShape(Rectangle())
         }
         .accessibilityIdentifier("menu-\(title)")
