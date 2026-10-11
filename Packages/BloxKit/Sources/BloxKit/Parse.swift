@@ -81,6 +81,16 @@ public enum Parse {
         }
     }
 
+    public static func plusBackgrounds(_ data: Data) -> [Item] {
+        struct R: Decodable {
+            struct I: Decodable { let id: Int64; let name: String; let creatorName: String?; let priceStatus: String?; let assetType: Int? }
+            let data: [I]
+        }
+        let all = (try? JSONDecoder().decode(R.self, from: data))?.data ?? []
+        return all.filter { $0.priceStatus == "Off Sale" && ($0.creatorName ?? "Roblox") == "Roblox" }
+            .map { Item(id: $0.id, name: $0.name, creator: "Roblox", price: 0, creatorVerified: true, kind: $0.assetType ?? Item.background) }
+    }
+
     public static func catalogCursor(_ data: Data) -> String? {
         struct R: Decodable { let nextPageCursor: String? }
         let c = (try? JSONDecoder().decode(R.self, from: data))?.nextPageCursor

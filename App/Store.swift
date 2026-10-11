@@ -97,6 +97,12 @@ final class Store: ObservableObject {
         drawSoon()
     }
 
+    func setBody(_ definition: String) {
+        guard definition != profile.definition else { return }
+        profile.definition = definition
+        drawSoon()
+    }
+
     func wear(outfit: Outfit) {
         let before = worn
         setWorn(outfit.keys)
@@ -204,7 +210,7 @@ final class Store: ObservableObject {
         try await install(look)
         profile.definition = look.definition
         profile.adopt(copiedItems: items)
-        profile.drawn = wearSignature(profile.items)
+        profile.drawn = drawSignature(profile.items, profile.definition)
         undone = []
         redone = []
     }
@@ -215,11 +221,11 @@ final class Store: ObservableObject {
         drawing = true
         drawNote = ""
         defer { drawing = false }
-        let wear = profile.wearing, asked = wearSignature(profile.items)
+        let wear = profile.wearing, body = profile.definition, asked = drawSignature(profile.items, profile.definition)
         do {
-            let look = try await Roblox.look(lookRequest(definition: profile.definition, wear: wear))
+            let look = try await Roblox.look(lookRequest(definition: body, wear: wear))
             try await install(look)
-            profile.definition = look.definition
+            if Build.key(profile.definition) == Build.key(body) { profile.definition = look.definition }
             profile.drawn = asked
             return true
         } catch {

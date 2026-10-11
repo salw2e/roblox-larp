@@ -84,8 +84,9 @@ public struct Slot: Hashable, Sendable {
     public static let all: [Slot] = [
         Slot(name: "Full Body", shelf: .body, kinds: [27, 28, 29, 30, 31], taxonomy: "kfHzJwaNYM8s2CWRqYUhRa"),
         Slot(name: "Hair", shelf: .body, kinds: [41], taxonomy: "d6a7M7r9MMrpf7z7VxW9ZS"),
-        Slot(name: "Head", shelf: .body, kinds: [17, 79], taxonomy: "s5NLP7BS9PRLKvUVca4XKg"),
-        Slot(name: "Face", shelf: .body, kinds: [18, 76, 77, 78], taxonomy: "tm9VSS61JdHJGtKvbjKa4D"),
+        Slot(name: "Head", shelf: .body, kinds: [17, 79, 18, 76, 77, 78], taxonomy: "s5NLP7BS9PRLKvUVca4XKg"),
+        Slot(name: "Build", shelf: .body, kinds: [], taxonomy: ""),
+        Slot(name: "Skin", shelf: .body, kinds: [], taxonomy: ""),       // its colour
         Slot(name: "Top", shelf: .clothing, kinds: [64, 65], taxonomy: "pJ71PxerdfEuarTNRtSZYs"),
         Slot(name: "Outerwear", shelf: .clothing, kinds: [67, 68], taxonomy: "kPZpEVNdProGcqMbj1jDKJ"),
         Slot(name: "Bottom", shelf: .clothing, kinds: [66, 69, 72], taxonomy: "1MvRtnnsy2FJWmkErSBxBa"),
@@ -163,7 +164,10 @@ public struct Profile: Codable, Hashable, Sendable {
     public var idCounter = 0
     public var picturesAt: Double?
 
-    public var needsRedraw: Bool { wearSignature(items) != (drawn ?? "") }
+    public var needsRedraw: Bool {
+        let d = drawn ?? ""
+        return d.contains("|") ? drawSignature(items, definition) != d : wearSignature(items) != d
+    }
 
     public init() {}
 

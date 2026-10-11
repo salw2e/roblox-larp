@@ -361,6 +361,56 @@ final class ParseTests: XCTestCase {
         XCTAssertEqual(p.robux, 0)
     }
 
+    func testPlusBackgrounds() throws {
+        let plus = Parse.plusBackgrounds(try fixture("backgrounds-roblox"))
+        XCTAssertEqual(plus.map(\.name), ["Soundwave", "Stargazer", "Stardust Stage", "Cotton Candy Horizon"])
+        XCTAssertTrue(plus.allSatisfy { $0.isBackground && $0.price == 0 })
+        XCTAssertFalse(plus.contains { $0.name == "Prism Skies" }, "free for everyone, not a Plus one")
+    }
+
+    func testGameEvents() throws {
+        let before = Date(timeIntervalSince1970: 1_791_676_800)               // 2026-10-11, before them all
+        let all = Parse.events(try fixture("events"), now: before)
+        XCTAssertEqual(all.count, 4)
+        XCTAssertEqual(all.map(\.start), all.map(\.start).sorted())
+        let first = try XCTUnwrap(all.first)
+        XCTAssertFalse(first.title.isEmpty)
+        XCTAssertNotNil(first.media)
+        XCTAssertEqual(first.when(now: before), "Live now", "began Oct 9, runs to Oct 16")
+        let later = try XCTUnwrap(all.first { $0.start > before.timeIntervalSince1970 })
+        XCTAssertEqual(later.when(now: before, zone: TimeZone(identifier: "UTC")!).components(separatedBy: " · ").count, 2)
+        XCTAssertTrue(Parse.events(try fixture("events"), now: Date(timeIntervalSince1970: 4_000_000_000)).isEmpty, "over: not shown")
+        let e = GameEvent(title: "x", subtitle: "", start: 1_791_932_435, end: 1_791_936_035, media: nil)   // 2026-10-13 23:00:35 UTC
+        XCTAssertEqual(e.when(now: before, zone: TimeZone(identifier: "UTC")!), "Tue, Oct 13 · 11:00 PM")
+    }
+
+    func testBuildAndSkin() throws {
+        let def = String(decoding: try fixture("look"), as: UTF8.self)
+        let look = try XCTUnwrap(Parse.look(Data(def.utf8)))
+        var d: String? = look.definition
+        XCTAssertEqual(Build.scale("height", in: d), 1)
+        d = Build.setting("height", to: 1.2, in: d)
+        XCTAssertEqual(Build.scale("height", in: d), 1.05)
+        d = Build.setting("width", to: 0.8349, in: d)                     // to Roblox's 0.01 steps
+        XCTAssertEqual(Build.scale("width", in: d), 0.83)
+        d = Build.painting("#cc8e69", in: d)
+        XCTAssertEqual(Build.skin(in: d), "#CC8E69")
+        XCTAssertTrue(d!.contains("\"leftLegColor\":\"#CC8E69\""), "every part takes the colour")
+        XCTAssertTrue(d!.contains("\"assets\""), "the worn items are kept")
+        XCTAssertEqual(Build.key(d), Build.key(Build.painting("#CC8E69", in: d)), "the same body, however written")
+        XCTAssertNotEqual(Build.key(d), Build.key(look.definition))
+
+        var p = Profile()
+        p.definition = look.definition
+        p.drawn = drawSignature(p.items, p.definition)
+        XCTAssertFalse(p.needsRedraw)
+        p.definition = Build.painting("#F8F8F8", in: p.definition)
+        XCTAssertTrue(p.needsRedraw, "a new skin needs a drawing")
+        p.drawn = ""                                                       // saved before the body counted
+        XCTAssertFalse(p.needsRedraw, "an old save is compared on its items alone")
+        XCTAssertEqual(Shelf.body.slots.map(\.name), ["Full Body", "Hair", "Head", "Build", "Skin"])
+    }
+
     func testOneBackgroundAtATime() {
         var p = Profile()
         let hat = Item(id: 1, name: "Hat", price: 0, kind: 8)

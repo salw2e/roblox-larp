@@ -27,6 +27,7 @@ struct AppearanceView: View {
     @State private var shelf = Shelf.avatars    // Customize's tab
     @State private var slotPicked: [Shelf: String] = [:]
     @State private var suggested: [String: [Item]] = [:]
+    @State private var plusOnes: [Item] = []
     @State private var naming = false
     @State private var outfitName = ""
     @State private var details: Outfit?
@@ -375,6 +376,12 @@ struct AppearanceView: View {
                     Text("You May Also Like").font(.builder(20, .bold)).frame(height: 24).padding(.top, 30).padding(.bottom, 12)
                     LazyVGrid(columns: grid, spacing: 20) { ForEach(styles) { catalogTile($0) } }
                 }
+            } else if let slot = currentSlot, slot.name == "Build" {
+                slotRow.padding(.top, 11)
+                buildPanel.padding(.top, 20)
+            } else if let slot = currentSlot, slot.name == "Skin" {
+                slotRow.padding(.top, 11)
+                skinPanel.padding(.top, 20)
             } else if let slot = currentSlot {
                 slotRow.padding(.top, 11)
                 let here = mine.filter(slot.holds)
@@ -391,6 +398,7 @@ struct AppearanceView: View {
                 } else {
                     owned(mine).padding(.top, 11)
                 }
+                plusSection.padding(.top, 30)
                 suggestions("ijFKKMZq6jV4gkJQC4v7L1")
             }
         }
@@ -439,7 +447,9 @@ struct AppearanceView: View {
                         VStack(spacing: 6) {
                             RoundedRectangle(cornerRadius: 10).fill(Color.tile).frame(width: 64, height: 64)
                                 .overlay {
-                                    if let worn { RemoteImage(url: worn.thumb, fill: false).padding(5) }
+                                    if s.name == "Skin" { Circle().fill(skinColor).padding(16) }
+                                    else if s.name == "Build" { Icon("person-standing", size: 30).foregroundStyle(Color.faint) }
+                                    else if let worn { RemoteImage(url: worn.thumb, fill: false).padding(5) }
                                     else { Image(systemName: "plus").font(.system(size: 14, weight: .medium)).foregroundStyle(Color.faint) }
                                 }
                                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(on ? Color.white : .clear, lineWidth: 2))
@@ -453,7 +463,74 @@ struct AppearanceView: View {
         .padding(.leading, -15).padding(.trailing, -14).contentMargins(.leading, 15).contentMargins(.trailing, 14)
     }
 
+    private var skinColor: Color { Self.color(Build.skin(in: store.profile.definition) ?? "#A3A2A5") }
+
+    private static func color(_ hex: String) -> Color {
+        let v = Int(hex.trimmingCharacters(in: CharacterSet(charactersIn: "#")), radix: 16) ?? 0
+        return Color(red: Double((v >> 16) & 255) / 255, green: Double((v >> 8) & 255) / 255, blue: Double(v & 255) / 255)
+    }
+
+    private var plusSection: some View {
+        let member = store.profile.badge == .plus
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Icon("premium", size: 20)
+                Text("Exclusive with Plus").font(.builder(20, .bold))
+            }
+            if !member { plusBanner }
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(91), spacing: 13.7, alignment: .top), count: 4), alignment: .leading, spacing: 13.7) {
+                Button { choose("Backgrounds") } label: {
+                    RoundedRectangle(cornerRadius: 8).fill(Color.tile).frame(width: 91, height: 91)
+                        .overlay(Image(systemName: "plus").font(.system(size: 20, weight: .light)).foregroundStyle(Color.faint))
+                }
+                .accessibilityLabel("More backgrounds")
+                ForEach(plusOnes) { bg in
+                    let worn = store.profile.owns(bg)?.wearing ?? false
+                    Button { if member { store.wear(bg, !worn) } else { open(.robux) } } label: {
+                        RoundedRectangle(cornerRadius: 8).fill(Color.tile).frame(width: 91, height: 91)
+                            .overlay { RemoteImage(url: bg.thumb, fill: true) }
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(worn ? Color.white : .clear, lineWidth: 2))
+                    }
+                    .accessibilityIdentifier("plusBackground").accessibilityLabel(bg.name)
+                }
+            }
+        }
+        .task { if plusOnes.isEmpty { plusOnes = await Roblox.plusBackgrounds() } }
+    }
+
+    private var buildPanel: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            ForEach(Build.ranges, id: \.key) { r in
+                BuildSlider(name: r.name, range: r.min...r.max, value: Build.scale(r.key, in: store.profile.definition)) { v in
+                    store.setBody(Build.setting(r.key, to: v, in: store.profile.definition))
+                }
+                .accessibilityIdentifier("build-\(r.key)")
+            }
+        }
+        .padding(.trailing, 1)
+    }
+
+    private var skinPanel: some View {
+        let now = Build.skin(in: store.profile.definition)
+        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 6), spacing: 14) {
+            ForEach(Build.skins, id: \.self) { hex in
+                Button { store.setBody(Build.painting(hex, in: store.profile.definition)) } label: {
+                    Circle().fill(Self.color(hex)).frame(width: 46, height: 46)
+                        .overlay(Circle().stroke(Color.white, lineWidth: now == hex ? 3 : 0).padding(-4))
+                }
+                .accessibilityIdentifier("skin-\(hex)").accessibilityLabel(now == hex ? "Skin \(hex), chosen" : "Skin \(hex)")
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    @ViewBuilder
     private func suggestions(_ taxonomy: String) -> some View {
+        if !taxonomy.isEmpty { suggestionList(taxonomy) }
+    }
+
+    private func suggestionList(_ taxonomy: String) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             if let items = suggested[taxonomy], !items.isEmpty {
                 Text("You May Also Like").font(.builder(20, .bold)).frame(height: 24).padding(.top, 34).padding(.bottom, 12)
@@ -599,5 +676,30 @@ struct AppearanceView: View {
             return
         }
         store.profile.items[i].price = t.isEmpty ? nil : number(from: t)
+    }
+}
+
+private struct BuildSlider: View {
+    let name: String
+    let range: ClosedRange<Double>
+    let value: Double
+    let commit: (Double) -> Void
+    @State private var shown: Double?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(name).font(.builder(14.5, .medium))
+                Spacer()
+                Text("\(Int(((shown ?? value) * 100).rounded()))%").font(.builder(14.5)).foregroundStyle(Color.faint)
+            }
+            Slider(value: Binding(get: { shown ?? value }, set: { shown = $0 }), in: range, step: 0.01) { editing in
+                if !editing, let v = shown {
+                    commit(v)
+                    shown = nil
+                }
+            }
+            .tint(Color.bloxBlue)
+        }
     }
 }

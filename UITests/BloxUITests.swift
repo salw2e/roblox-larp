@@ -297,6 +297,17 @@ final class BloxUITests: XCTestCase {
         shot("16 customize")
         if ProcessInfo.processInfo.environment["BLOX_TEST_REDRAW"] == "1" { try redraw() }
 
+        app.buttons["shelf-Body"].tap()
+        app.buttons["slot-Skin"].tap()
+        let tan = app.buttons["skin-#CC8E69"]
+        XCTAssertTrue(tan.waitForExistence(timeout: 3))
+        tan.tap()
+        XCTAssertTrue(tan.label.hasSuffix("chosen"), tan.label)
+        shot("16c skin")
+        app.buttons["slot-Build"].tap()
+        XCTAssertTrue(any("build-height").waitForExistence(timeout: 3))
+        shot("16d build")
+
         app.buttons["tab-Chat"].tap()
         XCTAssertTrue(app.buttons["chatRow"].firstMatch.waitForExistence(timeout: 5))
         shot("17 chat")

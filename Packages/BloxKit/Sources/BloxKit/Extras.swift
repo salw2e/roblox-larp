@@ -134,6 +134,24 @@ public struct GameInfo: Equatable, Sendable {
     public var creatorVerified = false
 }
 
+public struct GameEvent: Equatable, Sendable {
+    public var title: String
+    public var subtitle: String
+    public var start: Double            // seconds since 1970
+    public var end: Double
+    public var media: Int64?            // its picture's asset id
+
+    public func when(now: Date = Date(), zone: TimeZone = .current) -> String {
+        let t = now.timeIntervalSince1970
+        if t >= start && t < end { return "Live now" }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US")
+        f.timeZone = zone
+        f.dateFormat = "EEE, MMM d · h:mm a"
+        return f.string(from: Date(timeIntervalSince1970: start))
+    }
+}
+
 public struct ItemInfo: Equatable, Sendable {
     public var description: String
     public var type: String
@@ -156,6 +174,35 @@ extension Parse {
                         visits: g.visits ?? 0, favorites: g.favoritedCount ?? 0, maxPlayers: g.maxPlayers ?? 0,
                         genre: g.genre_l1 ?? g.genre ?? "", created: day(g.created), updated: day(g.updated),
                         creatorVerified: g.creator?.hasVerifiedBadge ?? false)
+    }
+
+    public static func events(_ data: Data, now: Date = Date()) -> [GameEvent] {
+        struct R: Decodable {
+            struct E: Decodable {
+                struct T: Decodable { let startUtc: String?; let endUtc: String? }
+                struct M: Decodable { let mediaId: Int64?; let rank: Int? }
+                let title: String?; let displayTitle: String?; let subtitle: String?; let displaySubtitle: String?
+                let eventTime: T?; let thumbnails: [M]?
+            }
+            let data: [E]
+        }
+        func seconds(_ iso: String?) -> Double? {
+            guard let iso else { return nil }
+            let f = ISO8601DateFormatter()
+            f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let d = f.date(from: iso) { return d.timeIntervalSince1970 }
+            f.formatOptions = [.withInternetDateTime]
+            return f.date(from: iso)?.timeIntervalSince1970
+        }
+        guard let r = try? JSONDecoder().decode(R.self, from: data) else { return [] }
+        return r.data.compactMap { e -> GameEvent? in
+            guard let start = seconds(e.eventTime?.startUtc), let end = seconds(e.eventTime?.endUtc), end > now.timeIntervalSince1970 else { return nil }
+            let picture = e.thumbnails?.min { ($0.rank ?? 0) < ($1.rank ?? 0) }?.mediaId
+            return GameEvent(title: (e.displayTitle ?? e.title ?? "").trimmingCharacters(in: .whitespaces),
+                             subtitle: (e.displaySubtitle ?? e.subtitle ?? "").trimmingCharacters(in: .whitespaces),
+                             start: start, end: end, media: picture)
+        }
+        .sorted { $0.start < $1.start }
     }
 
     public static func maturity(_ data: Data) -> String? {

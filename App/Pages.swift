@@ -557,6 +557,8 @@ struct GamePage: View {
     @State private var info: GameInfo?
     @State private var filled: Game?
     @State private var slides: [String] = []
+    @State private var events: [GameEvent] = []
+    @State private var eventPictures: [Int64: String] = [:]
     @State private var maturity: String?
     @State private var slide = 0
     @State private var loaded = false
@@ -576,6 +578,7 @@ struct GamePage: View {
                     header(shown)
                     pictures(shown).padding(.top, 28)
                     chips(shown).padding(.top, 22)
+                    if !events.isEmpty { eventRow.padding(.top, 28) }
                     if let info {
                         Text("About").font(.builder(20, .bold)).padding(.top, 28)
                         Text(info.description).font(.builder(14.5)).foregroundStyle(Color.faint).padding(.top, 8)
@@ -732,9 +735,40 @@ struct GamePage: View {
         async let i = Roblox.gameInfo(game.id)
         async let m = Roblox.maturity(game.id)
         async let s = Roblox.slides(game.id)
+        async let e = Roblox.events(game.id)
         if game.wide == nil || game.rating == nil { filled = await Roblox.complete([game]).first }
         (info, maturity, slides) = await (i, m, s)
+        (events, eventPictures) = await e
         loaded = true
+    }
+
+    private var eventRow: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Events").font(.builder(20, .bold))
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(events.indices, id: \.self) { i in
+                        let e = events[i]
+                        VStack(alignment: .leading, spacing: 4) {
+                            RoundedRectangle(cornerRadius: 8).fill(Color.tile).aspectRatio(16 / 9, contentMode: .fit)
+                                .overlay { RemoteImage(url: e.media.flatMap { eventPictures[$0] }, fill: true) }
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .overlay(alignment: .topLeading) {
+                                    let live = e.when() == "Live now"
+                                    Text(live ? "Live" : e.when()).font(.builder(12, .bold)).padding(.horizontal, 8).frame(height: 22)
+                                        .background(live ? Color.rgb(226, 35, 26) : Color.black.opacity(0.6), in: Capsule())
+                                        .foregroundStyle(.white).padding(8)
+                                }
+                            Text(e.title).font(.builder(14.5, .bold)).lineLimit(1).padding(.top, 6)
+                            if !e.subtitle.isEmpty { Text(e.subtitle).font(.builder(12)).foregroundStyle(Color.faint).lineLimit(1) }
+                        }
+                        .frame(width: 300)
+                        .accessibilityIdentifier("gameEvent")
+                    }
+                }
+            }
+            .padding(.horizontal, -20).contentMargins(.horizontal, 20)
+        }
     }
 
     private func fact(_ name: String, _ value: String) -> some View {

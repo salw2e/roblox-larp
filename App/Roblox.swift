@@ -236,6 +236,22 @@ enum Roblox {
         return Parse.maturity(data)
     }
 
+    static func events(_ universe: Int64) async -> (events: [GameEvent], pictures: [Int64: String]) {
+        guard let data = try? await fetch(url("https://apis.roblox.com/virtual-events/v1/universes/\(universe)/virtual-events", ["limit": "10"]))
+        else { return ([], [:]) }
+        let events = Parse.events(data)
+        let ids = events.compactMap(\.media)
+        guard !ids.isEmpty else { return (events, [:]) }
+        return (events, await pictures("https://thumbnails.roblox.com/v1/assets", ["assetIds": list(ids), "size": "768x432", "format": "Png"]))
+    }
+
+    static func plusBackgrounds() async -> [Item] {
+        let u = url("https://catalog.roblox.com/v2/search/items/details",
+                    ["taxonomy": "ijFKKMZq6jV4gkJQC4v7L1", "creatorName": "Roblox", "includeNotForSale": "true", "limit": "120"])
+        guard let data = try? await fetch(u) else { return [] }
+        return await withThumbs(Parse.plusBackgrounds(data))
+    }
+
     static func slides(_ universe: Int64) async -> [String] {
         let u = url("https://thumbnails.roblox.com/v1/games/multiget/thumbnails",
                     ["universeIds": "\(universe)", "countPerUniverse": "10", "size": "768x432", "format": "Png"])
