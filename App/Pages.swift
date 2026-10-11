@@ -736,7 +736,7 @@ struct GamePage: View {
         async let m = Roblox.maturity(game.id)
         async let s = Roblox.slides(game.id)
         async let e = Roblox.events(game.id)
-        if game.wide == nil || game.rating == nil { filled = await Roblox.complete([game]).first }
+        if game.wide == nil || game.rating == nil || game.icon == nil { filled = await Roblox.complete([game]).first }
         (info, maturity, slides) = await (i, m, s)
         (events, eventPictures) = await e
         loaded = true
