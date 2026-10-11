@@ -13,12 +13,16 @@ public struct Item: Codable, Identifiable, Hashable, Sendable {
     public var creatorVerified: Bool?
     public var limited: Bool?
     public var copied: Bool?
+    public var kind: Int?
+
+    public static let background = 92
+    public var isBackground: Bool { kind == Item.background }
 
     public init(id: Int64, bundle: Bool = false, name: String, creator: String = "Roblox", price: Int?,
-                thumb: String? = nil, wearing: Bool = false, creatorVerified: Bool? = nil, limited: Bool? = nil) {
+                thumb: String? = nil, wearing: Bool = false, creatorVerified: Bool? = nil, limited: Bool? = nil, kind: Int? = nil) {
         self.id = id; self.bundle = bundle; self.name = name; self.creator = creator
         self.price = price; self.thumb = thumb; self.wearing = wearing; self.creatorVerified = creatorVerified
-        self.limited = limited
+        self.limited = limited; self.kind = kind
     }
 
     public func same(_ other: Item) -> Bool { id == other.id && bundle == other.bundle }
@@ -141,8 +145,12 @@ public struct Profile: Codable, Hashable, Sendable {
     public var wearing: [Item] { items.filter(\.wearing) }
 
     public mutating func wear(_ item: Item, _ on: Bool = true) {
+        if on, item.isBackground {          // one background at a time
+            for i in items.indices where items[i].isBackground && !items[i].same(item) { items[i].wearing = false }
+        }
         if let i = items.firstIndex(where: { $0.same(item) }) {
             items[i].wearing = on
+            if items[i].kind == nil { items[i].kind = item.kind }      // saved before types were kept
         } else {
             var copy = item
             copy.wearing = on
@@ -151,6 +159,8 @@ public struct Profile: Codable, Hashable, Sendable {
     }
 
     public func owns(_ item: Item) -> Item? { items.first { $0.same(item) } }
+
+    public var backdrop: Item? { items.first { $0.wearing && $0.isBackground } }
 
     public var shownName: String {
         let d = displayName.trimmingCharacters(in: .whitespaces)

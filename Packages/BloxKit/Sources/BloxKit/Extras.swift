@@ -71,6 +71,12 @@ extension Profile {
         ledger["Currency Purchases", default: 0] += amount
     }
 
+    public mutating func send(_ amount: Int) -> Bool {
+        guard amount > 0, amount <= robux else { return false }
+        robux -= amount
+        return true
+    }
+
     public mutating func accept(trade id: Int) -> Bool {
         guard trades.first(where: { $0.id == id })?.status == .inbound else { return false }
         return complete(trade: id)

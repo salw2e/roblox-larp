@@ -170,6 +170,7 @@ final class ParseTests: XCTestCase {
         XCTAssertEqual(worn.map(\.id), [1080951, 1142116])
         XCTAssertEqual(worn.map(\.name), ["Builders Club Hard Hat", "bm-mo2.jpg"])
         XCTAssertTrue(worn.allSatisfy { $0.wearing && $0.price == nil && $0.creator.isEmpty })
+        XCTAssertEqual(worn.map(\.kind), [8, 2])                          // hat, T-shirt
         XCTAssertEqual(Parse.worn(Data("{}".utf8)), [])
         let limited = try XCTUnwrap(Parse.asset(try fixture("economy-limited")))
         XCTAssertEqual(limited.name, "Fiery Horns of the Netherworld")
@@ -179,6 +180,7 @@ final class ParseTests: XCTestCase {
         let hat = try XCTUnwrap(Parse.asset(try fixture("economy-1080951")))
         XCTAssertEqual(hat.name, "Builders Club Hard Hat")
         XCTAssertNil(hat.price)                         // off sale
+        XCTAssertEqual(hat.kind, 8)
         XCTAssertNil(hat.limited)
     }
 
@@ -186,6 +188,8 @@ final class ParseTests: XCTestCase {
         let items = Parse.catalog(try fixture("search"))
         XCTAssertEqual(items.count, 30)
         XCTAssertEqual(items.filter(\.bundle).map(\.id), [741196])
+        XCTAssertEqual(items.filter { $0.kind == 42 }.count, 3)           // face accessories
+        XCTAssertNil(items.first(where: \.bundle)?.kind)
         XCTAssertEqual(items.first?.price, 95)
         let devil = try XCTUnwrap(items.first { $0.name.contains("horns") && $0.limited == true })
         XCTAssertEqual(devil.price, 225)                                   // launched at 95
@@ -275,6 +279,40 @@ final class ParseTests: XCTestCase {
         XCTAssertFalse(p.needsRedraw)
         p.wear(p.items[0], false)                                          // taking one off does
         XCTAssertTrue(p.needsRedraw)
+    }
+
+    func testSendingRobux() {
+        var p = Profile()
+        p.robux = 100
+        XCTAssertFalse(p.send(0))
+        XCTAssertFalse(p.send(-5))
+        XCTAssertFalse(p.send(101))
+        XCTAssertEqual(p.robux, 100)
+        XCTAssertTrue(p.send(100))
+        XCTAssertEqual(p.robux, 0)
+    }
+
+    func testOneBackgroundAtATime() {
+        var p = Profile()
+        let hat = Item(id: 1, name: "Hat", price: 0, kind: 8)
+        let sky = Item(id: 121199209890990, name: "Prism Skies", price: 0, kind: Item.background)
+        let fire = Item(id: 5, name: "Staring Cat Explosion", price: 200, kind: Item.background)
+        p.wear(hat)
+        p.drawn = wearSignature(p.items)
+        p.wear(sky)
+        XCTAssertEqual(p.backdrop?.id, sky.id)
+        XCTAssertFalse(p.needsRedraw, "a background sits behind the avatar: nothing to draw")
+        p.wear(fire)                                                       // the new one replaces the old
+        XCTAssertEqual(p.backdrop?.id, 5)
+        XCTAssertEqual(p.items.filter(\.wearing).map(\.id), [1, 5])
+        p.wear(hat, false)
+        XCTAssertTrue(p.items.first { $0.id == 5 }!.wearing, "taking off a hat leaves the background on")
+        p.wear(fire, false)
+        XCTAssertNil(p.backdrop)
+        var old = Profile()                                                // saved before types were kept
+        old.items = [Item(id: sky.id, name: "Prism Skies", price: 0)]
+        old.wear(sky)                                                      // picked again from Backgrounds
+        XCTAssertEqual(old.backdrop?.id, sky.id)
     }
 }
 

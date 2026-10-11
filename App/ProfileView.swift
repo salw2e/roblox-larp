@@ -76,6 +76,10 @@ struct ProfileView: View {
             .init(color: .rgb(54, 61, 70), location: 0.85),
             .init(color: .bg, location: 1),
         ], startPoint: .top, endPoint: .bottom)
+        .overlay {
+            BackdropPicture().mask(LinearGradient(stops: [.init(color: .black, location: 0.7), .init(color: .clear, location: 1)],
+                                                  startPoint: .top, endPoint: .bottom))
+        }
         .frame(height: 327)
         .overlay(alignment: .top) { Color.rgb(41, 40, 44).frame(height: 800).offset(y: -800) }
     }
@@ -217,6 +221,7 @@ struct FullProfileView: View {
             VStack(alignment: .leading, spacing: 0) {
                 ZStack(alignment: .topTrailing) {
                     RoundedRectangle(cornerRadius: 8).fill(Color.rgb(25, 26, 30))
+                        .overlay { BackdropPicture() }.clipShape(RoundedRectangle(cornerRadius: 8))
                     AvatarStage(flat: flat).padding(.vertical, 10)
                     if store.modelVersion > 0 {
                         Button { flat.toggle() } label: {

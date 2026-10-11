@@ -22,9 +22,9 @@ public enum Parse {
     }
 
     public static func worn(_ data: Data) -> [Item] {
-        struct R: Decodable { struct A: Decodable { let id: Int64; let name: String? }; let assets: [A] }
+        struct R: Decodable { struct T: Decodable { let id: Int }; struct A: Decodable { let id: Int64; let name: String?; let assetType: T? }; let assets: [A] }
         guard let r = try? JSONDecoder().decode(R.self, from: data) else { return [] }
-        return r.assets.map { Item(id: $0.id, name: $0.name ?? "Item", creator: "", price: nil, wearing: true) }
+        return r.assets.map { Item(id: $0.id, name: $0.name ?? "Item", creator: "", price: nil, wearing: true, kind: $0.assetType?.id) }
     }
 
     public static func wearing(_ data: Data) -> [Int64] {
@@ -35,12 +35,12 @@ public enum Parse {
     public static func asset(_ data: Data) -> Item? {
         struct C: Decodable { let Name: String? }
         struct L: Decodable { let CollectibleLowestResalePrice: Int? }
-        struct R: Decodable { let AssetId: Int64; let Name: String; let PriceInRobux: Int?; let Creator: C?; let IsLimited: Bool?; let IsLimitedUnique: Bool?; let CollectiblesItemDetails: L? }
+        struct R: Decodable { let AssetId: Int64; let Name: String; let PriceInRobux: Int?; let Creator: C?; let IsLimited: Bool?; let IsLimitedUnique: Bool?; let CollectiblesItemDetails: L?; let AssetTypeId: Int? }
         guard let r = try? JSONDecoder().decode(R.self, from: data) else { return nil }
         let limited = (r.IsLimited ?? false) || (r.IsLimitedUnique ?? false)
         let resale = limited ? r.CollectiblesItemDetails?.CollectibleLowestResalePrice : nil
         return Item(id: r.AssetId, name: r.Name, creator: r.Creator?.Name ?? "Roblox", price: resale ?? r.PriceInRobux,
-                    limited: limited ? true : nil)
+                    limited: limited ? true : nil, kind: r.AssetTypeId)
     }
 
     public static func catalog(_ data: Data) -> [Item] {
@@ -48,7 +48,7 @@ public enum Parse {
             struct I: Decodable {
                 let id: Int64; let itemType: String; let name: String; let creatorName: String?; let price: Int?
                 let lowestPrice: Int?; let lowestResalePrice: Int?; let unitsAvailableForConsumption: Int?
-                let itemRestrictions: [String]?; let creatorHasVerifiedBadge: Bool?
+                let itemRestrictions: [String]?; let creatorHasVerifiedBadge: Bool?; let assetType: Int?
             }
             let data: [I]
         }
@@ -58,7 +58,7 @@ public enum Parse {
             let soldOut = collectible && (i.unitsAvailableForConsumption ?? 0) == 0 && (i.lowestResalePrice ?? 0) > 0
             return Item(id: i.id, bundle: i.itemType == "Bundle", name: i.name, creator: i.creatorName ?? "Roblox",
                         price: soldOut ? i.lowestResalePrice : (i.price ?? i.lowestPrice),
-                        creatorVerified: i.creatorHasVerifiedBadge, limited: collectible ? true : nil)
+                        creatorVerified: i.creatorHasVerifiedBadge, limited: collectible ? true : nil, kind: i.assetType)
         }
     }
 

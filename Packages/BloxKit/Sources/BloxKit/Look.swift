@@ -40,5 +40,5 @@ public func lookRequest(definition: String?, wear items: [Item]) -> Data {
 }
 
 public func wearSignature(_ items: [Item]) -> String {
-    items.filter(\.wearing).map { ($0.bundle ? "b" : "") + "\($0.id)" }.sorted().joined(separator: ",")
+    items.filter { $0.wearing && !$0.isBackground }.map { ($0.bundle ? "b" : "") + "\($0.id)" }.sorted().joined(separator: ",")
 }

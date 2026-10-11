@@ -64,6 +64,7 @@ struct AppearanceView: View {
         ZStack(alignment: .top) {
             LinearGradient(colors: [Color(white: 0.2), Color(white: 0.3)], startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea(edges: .top)
+            BackdropPicture().ignoresSafeArea(edges: .top)
             AvatarStage().padding(.top, 50).padding(.bottom, 22)
             topControls
             if store.profile.needsRedraw || store.drawing || !store.drawNote.isEmpty { redrawControl }

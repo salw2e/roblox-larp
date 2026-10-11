@@ -261,6 +261,20 @@ struct CountBubble: View {
     }
 }
 
+struct BackdropPicture: View {
+    @EnvironmentObject var store: Store
+    @State private var sharp: [Int64: String] = [:]
+    var body: some View {
+        if let item = store.profile.backdrop {
+            Color.clear
+                .overlay { RemoteImage(url: sharp[item.id] ?? item.thumb, fill: true) }
+                .clipped()
+                .allowsHitTesting(false)
+                .task(id: item.id) { if sharp[item.id] == nil, let url = await Roblox.bigThumb(item) { sharp[item.id] = url } }
+        }
+    }
+}
+
 struct RemoteImage: View {
     let url: String?
     let fill: Bool
