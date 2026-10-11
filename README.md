@@ -16,12 +16,12 @@ cd Packages/BloxKit && swift test
 
 <picture>
   <source media="(min-width: 768px)" srcset="shots/app-wide.webp">
-  <img src="shots/app.webp" width="100%" alt="profile, menu, marketplace, item page, buy robux">
+  <img src="shots/app.webp" width="100%" alt="profile, menu, marketplace, buy robux">
 </picture>
 
 ## the editor
 
 <picture>
   <source media="(min-width: 768px)" srcset="shots/editor-wide.webp">
-  <img src="shots/editor.webp" width="100%" alt="edit profile, saved outfits, skin, build">
+  <img src="shots/editor.webp" width="100%" alt="edit profile, skin">
 </picture>
