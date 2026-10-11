@@ -7,7 +7,7 @@ roblox look-alike for iphone. fake profile, robux, avatar, marketplace, the lot.
 swiftui, built unsigned on github actions, installed with sideloadly.
 
 ```
-cd Packages/BloxKit && swift test
+cd Packages/SalBloxKit && swift test
 ```
 
 `server/` is the small avatar service the app talks to.
@@ -31,3 +31,5 @@ cd Packages/BloxKit && swift test
 not affiliated with roblox. roblox, its name, logo, fonts and icons belong to roblox corporation. this is a fan project, it's free and makes no money.
 
 if you're from roblox and want something changed or taken down, open an issue and it'll be done.
+
+the code is MIT. that doesn't cover anything that belongs to roblox.
