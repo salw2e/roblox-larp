@@ -625,12 +625,19 @@ struct FriendsListView: View {
                     Button { open(.friend(f.id)) } label: {
                         HStack(spacing: 12) {
                             RemoteCircle(url: f.headshot, size: 48)
+                                .overlay(alignment: .bottomTrailing) {
+                                    if f.online {
+                                        Circle().fill(Color.bg).frame(width: 16, height: 16)
+                                            .overlay(Circle().fill(Color.online).frame(width: 11, height: 11))
+                                    }
+                                }
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(f.displayName).font(.builder(16, .bold))
-                                Text("@\(f.name)").font(.builder(14.5)).foregroundStyle(Color.faint)
+                                Text(f.displayName).font(.builder(16, .bold)).lineLimit(1)
+                                Text(f.status.isEmpty ? (f.online ? "Online" : "Offline") : f.status)
+                                    .font(.builder(14.5)).foregroundStyle(f.online && !f.status.isEmpty ? Color.online : Color.faint).lineLimit(1)
                             }
                             Spacer()
-                            if f.online { Circle().fill(Color.online).frame(width: 12, height: 12) }
+                            Icon("chevron-large-right", size: 18).foregroundStyle(Color.faint)
                         }
                         .frame(height: 68).contentShape(Rectangle())
                     }
