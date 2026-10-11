@@ -71,6 +71,16 @@ extension Profile {
         ledger["Currency Purchases", default: 0] += amount
     }
 
+    @discardableResult
+    public mutating func saveOutfit(named name: String) -> Outfit {
+        let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let outfit = Outfit(id: newId(), name: n.isEmpty ? "Avatar \(outfits.count + 1)" : n, keys: wearing.map(\.key))
+        outfits.append(outfit)
+        return outfit
+    }
+
+    public func isWorn(_ outfit: Outfit) -> Bool { Set(wearing.map(\.key)) == Set(outfit.keys) }
+
     public mutating func send(_ amount: Int) -> Bool {
         guard amount > 0, amount <= robux else { return false }
         robux -= amount

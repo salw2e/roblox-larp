@@ -94,6 +94,44 @@ final class Store: ObservableObject {
         setWorn(keys)
     }
 
+    func wear(outfit: Outfit) {
+        let before = worn
+        setWorn(outfit.keys)
+        if worn != before {
+            undone.append(before)
+            redone = []
+        }
+    }
+
+    func saveOutfit(named name: String) {
+        let outfit = profile.saveOutfit(named: name)
+        if let png = avatar?.pngData() { try? png.write(to: Self.outfitPicture(outfit.id), options: .atomic) }
+    }
+
+    func deleteOutfit(_ outfit: Outfit) {
+        profile.outfits.removeAll { $0.id == outfit.id }
+        try? FileManager.default.removeItem(at: Self.outfitPicture(outfit.id))
+    }
+
+    static func outfitPicture(_ id: Int) -> URL { dir.appendingPathComponent("outfit-\(id).png") }
+
+    func fillKinds() async {
+        let missing = profile.items.filter { $0.kind == nil && !$0.bundle }.map(\.id)
+        for chunk in stride(from: 0, to: missing.count, by: 5).map({ Array(missing[$0..<min($0 + 5, missing.count)]) }) {
+            let found = await withTaskGroup(of: (Int64, Int?).self) { group in
+                for id in chunk {
+                    group.addTask { (id, await Roblox.kind(of: id)) }
+                }
+                var all: [Int64: Int] = [:]
+                for await (id, kind) in group { if let kind { all[id] = kind } }
+                return all
+            }
+            for i in profile.items.indices where !profile.items[i].bundle && profile.items[i].kind == nil {
+                profile.items[i].kind = found[profile.items[i].id]
+            }
+        }
+    }
+
     private func setWorn(_ keys: [String]) {
         for i in profile.items.indices { profile.items[i].wearing = keys.contains(profile.items[i].key) }
     }

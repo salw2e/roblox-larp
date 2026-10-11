@@ -127,6 +127,11 @@ enum Roblox {
         return items.map { var i = $0; i.thumb = (i.bundle ? b : a)[i.id] ?? i.thumb; return i }
     }
 
+    static func kind(of id: Int64) async -> Int? {
+        guard let data = try? await fetch(URL(string: "https://economy.roblox.com/v2/assets/\(id)/details")!) else { return nil }
+        return Parse.asset(data)?.kind
+    }
+
     static func bigThumb(_ item: Item) async -> String? {
         guard !item.bundle else { return nil }
         return await pictures("https://thumbnails.roblox.com/v1/assets", ["assetIds": "\(item.id)", "size": "700x700", "format": "Png"])[item.id]

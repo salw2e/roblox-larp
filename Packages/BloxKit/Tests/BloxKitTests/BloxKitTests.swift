@@ -281,6 +281,28 @@ final class ParseTests: XCTestCase {
         XCTAssertTrue(p.needsRedraw)
     }
 
+    func testOutfitsAndShelves() {
+        var p = Profile()
+        p.wear(Item(id: 1, name: "Hat", price: 0, kind: 8))
+        p.wear(Item(id: 2, bundle: true, name: "Thin", price: 175))
+        p.items.append(Item(id: 3, name: "Shirt", price: 5, kind: 11))      // owned, not worn
+        let kk = p.saveOutfit(named: "  Kk ")
+        XCTAssertEqual(kk.name, "Kk")
+        XCTAssertEqual(Set(kk.keys), ["1", "b2"])
+        XCTAssertTrue(p.isWorn(kk))
+        XCTAssertEqual(p.saveOutfit(named: " ").name, "Avatar 2")
+        XCTAssertNotEqual(p.outfits[0].id, p.outfits[1].id)
+        p.wear(p.items[2])
+        XCTAssertFalse(p.isWorn(kk), "a shirt more is another look")
+        XCTAssertEqual(Shelf.of(Item(id: 1, name: "", price: 0, kind: 8)), .accessories)
+        XCTAssertEqual(Shelf.of(Item(id: 1, name: "", price: 0, kind: 41)), .body)          // hair
+        XCTAssertEqual(Shelf.of(Item(id: 1, name: "", price: 0, kind: 66)), .clothing)      // layered pants
+        XCTAssertEqual(Shelf.of(Item(id: 1, name: "", price: 0, kind: 2)), .clothing)       // classic T-shirt
+        XCTAssertEqual(Shelf.of(Item(id: 1, name: "", price: 0, kind: 92)), .backgrounds)
+        XCTAssertEqual(Shelf.of(Item(id: 1, bundle: true, name: "", price: 0)), .avatars)
+        XCTAssertEqual(Shelf.of(Item(id: 1, name: "", price: 0)), .accessories)             // type not known yet
+    }
+
     func testSendingRobux() {
         var p = Profile()
         p.robux = 100

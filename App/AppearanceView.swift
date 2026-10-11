@@ -23,6 +23,11 @@ struct AppearanceView: View {
     @State private var priceText = ""
     @State private var priceProblem = ""
     @State private var raised = false
+    @State private var shelf = Shelf.avatars    // Customize's tab
+    @State private var naming = false
+    @State private var outfitName = ""
+    @State private var details: Outfit?
+    @State private var renaming: Outfit?
     @GestureState private var pull: CGFloat = 0
     @FocusState private var typing: Bool
     private let restTop: CGFloat = 316, raisedTop: CGFloat = 48
@@ -172,7 +177,7 @@ struct AppearanceView: View {
                     .accessibilityIdentifier("sheetHandle").accessibilityLabel(raised ? "Lower the list" : "Raise the list")
                     .accessibilityAddTraits(.isButton)
                 if searching && !customize { searchBar }
-                if !customize { categoryTabs }
+                if customize { shelfTabs } else { categoryTabs }
             }
             .simultaneousGesture(sheetDrag)
             ScrollView {
@@ -197,20 +202,33 @@ struct AppearanceView: View {
             }
     }
 
+    private func underlined(_ title: String, on: Bool) -> some View {
+        VStack(spacing: 7.5) {
+            Text(title).font(.builder(16, .bold)).frame(height: 20).padding(.horizontal, 11)
+                .foregroundStyle(on ? Color.ink : Color.dim)
+            Rectangle().fill(on ? Color.ink : .clear).frame(height: 2.5)
+        }
+        .fixedSize()
+    }
+
+    private var shelfTabs: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 0) {
+                ForEach(Shelf.allCases, id: \.self) { s in
+                    Button { shelf = s } label: { underlined(s.rawValue, on: shelf == s) }
+                        .accessibilityIdentifier("shelf-\(s.rawValue)")
+                }
+            }
+        }
+    }
+
     private var categoryTabs: some View {
         HStack(alignment: .top, spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 0) {
                     ForEach(order, id: \.self) { c in
-                        Button { choose(c) } label: {
-                            VStack(spacing: 7.5) {
-                                Text(c).font(.builder(16, .bold)).frame(height: 20).padding(.horizontal, 11)
-                                    .foregroundStyle(category == c ? Color.ink : Color.dim)
-                                Rectangle().fill(category == c ? Color.ink : .clear).frame(height: 2.5)
-                            }
-                            .fixedSize()
-                        }
-                        .accessibilityIdentifier("cat-\(c)")
+                        Button { choose(c) } label: { underlined(c, on: category == c) }
+                            .accessibilityIdentifier("cat-\(c)")
                     }
                 }
             }
@@ -298,25 +316,100 @@ struct AppearanceView: View {
     }
 
     private var inventory: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Inventory").font(.builder(20, .bold)).frame(height: 24).padding(.top, 10)
-            Text(store.profile.items.isEmpty ? "Nothing yet. Get items in the Marketplace."
-                 : "Tap to put on or take off. Hold an item to change its price or remove it.")
-                .font(.builder(14.5)).foregroundStyle(Color.faint)
-            LazyVGrid(columns: grid, spacing: 20) {
-                ForEach(store.profile.items) { item in
-                    Button { store.wear(item, !item.wearing) } label: { tile(item, showCreator: false) }
-                        .accessibilityIdentifier("inventoryItem")
-                        .contextMenu {
-                            Button("Change price") { priceText = item.price.map(String.init) ?? ""; pricing = item }
-                            Button("Open its page") { open(.item(item)) }
-                            Button("Remove", role: .destructive) { store.profile.items.removeAll { $0.same(item) } }
-                        }
+        let mine = store.profile.items.filter { Shelf.of($0) == shelf }
+        return VStack(alignment: .leading, spacing: 0) {
+            if shelf == .avatars {
+                outfits.padding(.top, 11)
+                if !mine.isEmpty {
+                    Text("Purchased").font(.builder(20, .bold)).frame(height: 24).padding(.top, 30).padding(.bottom, 12)
+                    owned(mine)
                 }
+                if !styles.isEmpty {
+                    Text("You May Also Like").font(.builder(20, .bold)).frame(height: 24).padding(.top, 30).padding(.bottom, 12)
+                    LazyVGrid(columns: grid, spacing: 20) { ForEach(styles) { catalogTile($0) } }
+                }
+            } else if mine.isEmpty {
+                Text("You don't have any \(shelf.rawValue.lowercased()) yet. Get some in the Marketplace.")
+                    .font(.builder(14.5)).foregroundStyle(Color.faint).padding(.top, 16)
+            } else {
+                owned(mine).padding(.top, 11)
             }
         }
         .padding(.leading, 15).padding(.trailing, 14).padding(.bottom, 30)
         .buttonStyle(PressStyle())
+        .task { await store.fillKinds() }
+        .task { if styles.isEmpty, let page = try? await Roblox.search("", category: Self.categories["Avatars"]) { styles = page.items } }
+        .alert("Save this avatar", isPresented: $naming) {
+            TextField("Name", text: $outfitName)
+            Button("Save") { store.saveOutfit(named: outfitName) }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text("Saves what you're wearing now under Avatars.") }
+        .confirmationDialog(details?.name ?? "", isPresented: Binding(get: { details != nil }, set: { if !$0 { details = nil } }), titleVisibility: .visible) {
+            if let o = details {
+                Button("Rename") { outfitName = o.name; renaming = o }
+                Button("Delete", role: .destructive) { store.deleteOutfit(o) }
+            }
+        }
+        .alert("Rename", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            TextField("Name", text: $outfitName)
+            Button("Save") {
+                let n = outfitName.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let o = renaming, !n.isEmpty, let i = store.profile.outfits.firstIndex(where: { $0.id == o.id }) { store.profile.outfits[i].name = n }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    private var outfits: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.fixed(91), spacing: 13.7, alignment: .top), count: 4), alignment: .leading, spacing: 16) {
+            Button { outfitName = ""; naming = true } label: {
+                VStack(alignment: .leading, spacing: 9) {
+                    RoundedRectangle(cornerRadius: 8).fill(Color.tile).frame(width: 91, height: 91)
+                        .overlay(Image(systemName: "plus").font(.system(size: 20, weight: .light)).foregroundStyle(Color.faint))
+                    Text("Add/Edit").font(.builder(12)).lineLimit(1)
+                }
+            }
+            .accessibilityIdentifier("addOutfit")
+            ForEach(store.profile.outfits) { o in
+                let on = store.profile.isWorn(o)
+                Button { if on { details = o } else { store.wear(outfit: o) } } label: {
+                    VStack(alignment: .leading, spacing: 9) {
+                        RoundedRectangle(cornerRadius: 8).fill(Color.tile).frame(width: 91, height: 91)
+                            .overlay {
+                                if let picture = UIImage(contentsOfFile: Store.outfitPicture(o.id).path) {
+                                    Image(uiImage: picture).resizable().scaledToFit().padding(6)
+                                }
+                            }
+                            .overlay(alignment: .bottom) {
+                                if on {
+                                    Text("Details").font(.builder(12, .medium)).foregroundStyle(Color.bg)
+                                        .frame(maxWidth: .infinity).frame(height: 30)
+                                        .background(Color.white.opacity(0.92), in: UnevenRoundedRectangle(bottomLeadingRadius: 6, bottomTrailingRadius: 6))
+                                        .padding(2)
+                                }
+                            }
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(on ? Color.white : .clear, lineWidth: 2))
+                        Text(o.name).font(.builder(12)).lineLimit(1)
+                    }
+                }
+                .accessibilityIdentifier("outfit")
+                .accessibilityLabel(on ? "\(o.name), worn. Details" : o.name)
+            }
+        }
+    }
+
+    private func owned(_ list: [Item]) -> some View {
+        LazyVGrid(columns: grid, spacing: 20) {
+            ForEach(list) { item in
+                Button { store.wear(item, !item.wearing) } label: { tile(item, showCreator: false) }
+                    .accessibilityIdentifier("inventoryItem")
+                    .contextMenu {
+                        Button("Change price") { priceText = item.price.map(String.init) ?? ""; pricing = item }
+                        Button("Open its page") { open(.item(item)) }
+                        Button("Remove", role: .destructive) { store.profile.items.removeAll { $0.same(item) } }
+                    }
+            }
+        }
     }
 
     private func tile(_ item: Item, showCreator: Bool) -> some View {

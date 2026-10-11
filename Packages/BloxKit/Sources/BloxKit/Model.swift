@@ -44,6 +44,27 @@ public struct Game: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
+public struct Outfit: Codable, Identifiable, Hashable, Sendable {
+    public var id: Int
+    public var name: String
+    public var keys: [String]
+    public init(id: Int, name: String, keys: [String]) { self.id = id; self.name = name; self.keys = keys }
+}
+
+public enum Shelf: String, CaseIterable, Sendable {
+    case avatars = "Avatars", body = "Body", clothing = "Clothing", accessories = "Accessories", backgrounds = "Backgrounds"
+
+    public static func of(_ item: Item) -> Shelf {
+        if item.bundle { return .avatars }                      // whole avatars and body bundles
+        switch item.kind ?? 0 {
+        case 17, 18, 27...31, 41, 76...79: return .body
+        case 2, 11, 12, 64...72: return .clothing
+        case Item.background: return .backgrounds
+        default: return .accessories
+        }
+    }
+}
+
 public struct Friend: Codable, Identifiable, Hashable, Sendable {
     public var id: Int64
     public var name: String
@@ -93,6 +114,7 @@ public struct Profile: Codable, Hashable, Sendable {
     public var ledger: [String: Int] = [:]
     public var trades: [Trade] = []
     public var notices: [Notice] = []
+    public var outfits: [Outfit] = []
     public var chats: [String: [ChatLine]] = [:]    // by friend id
     public var definition: String?
     public var drawn: String?
@@ -188,7 +210,7 @@ public struct Profile: Codable, Hashable, Sendable {
     }
 
     public mutating func newId() -> Int {
-        idCounter = max(idCounter, (trades.map(\.id) + notices.map(\.id)).max() ?? 0) + 1
+        idCounter = max(idCounter, (trades.map(\.id) + notices.map(\.id) + outfits.map(\.id)).max() ?? 0) + 1
         return idCounter
     }
 }

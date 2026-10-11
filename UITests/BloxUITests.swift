@@ -263,6 +263,20 @@ final class BloxUITests: XCTestCase {
         app.buttons["searchToggle"].tap()          // closing the search ends it
 
         app.buttons["tab-Customize"].tap()
+        XCTAssertTrue(app.buttons["addOutfit"].waitForExistence(timeout: 5))
+        app.buttons["addOutfit"].tap()
+        let outfitName = app.alerts.textFields.firstMatch
+        XCTAssertTrue(outfitName.waitForExistence(timeout: 3))
+        outfitName.typeText("Kk")
+        app.alerts.buttons["Save"].tap()
+        XCTAssertTrue(app.buttons["outfit"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["outfit"].label.contains("worn"), app.buttons["outfit"].label)
+        sleep(3)
+        shot("16a avatars")
+        for shelf in ["Accessories", "Clothing", "Body"] where !app.buttons["inventoryItem"].exists {
+            app.buttons["shelf-\(shelf)"].tap()
+            _ = app.buttons["inventoryItem"].firstMatch.waitForExistence(timeout: 8)     // types are looked up first
+        }
         XCTAssertTrue(app.buttons["inventoryItem"].firstMatch.waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["undoWear"].isEnabled)
         app.buttons["inventoryItem"].firstMatch.tap()
