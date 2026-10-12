@@ -153,10 +153,12 @@ struct SendRobuxSheet: View {
                 .accessibilityIdentifier("sendingTo")
             HStack(spacing: 8) {
                 Icon("robux", size: 30)
-                TextField("0", text: Binding(get: { amount }, set: { typed in
-                    let n = number(from: String(digits(in: typed).prefix(9)))
-                    amount = n == 0 ? "" : grouped(n)                    // 2000 reads 2,000 while you type
-                })).keyboardType(.numberPad).font(.builder(44, .bold)).fixedSize()
+                TextField("0", text: $amount).keyboardType(.numberPad).font(.builder(44, .bold)).fixedSize()
+                    .onChange(of: amount) { _, typed in
+                        // 2000 reads 2,000 while you type. changing the text from here is what makes the field redraw it
+                        let n = number(from: String(digits(in: typed).prefix(9))), tidy = n == 0 ? "" : grouped(n)
+                        if tidy != typed { amount = tidy }
+                    }
                     .accessibilityIdentifier("sendAmount")
             }
             .frame(height: 53)
