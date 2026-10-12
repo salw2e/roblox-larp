@@ -27,7 +27,9 @@ struct SalBloxApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(store)
-                .onChange(of: phase) { _, now in if now != .active { store.saveNow() } }   // nothing typed last is lost
+                .onChange(of: phase) { _, now in
+                    if now == .active { store.resumeDrawing() } else { store.saveNow() }     // nothing typed last is lost
+                }
                 .environment(\.font, .builder(17))
                 .foregroundStyle(Color.ink)
                 .preferredColorScheme(.dark)

@@ -161,9 +161,16 @@ final class Store: ObservableObject {
             guard !Task.isCancelled else { return }
             let drew = await self.redraw()
             self.autoDraw = nil
-            if !drew, tries < 4 { self.drawSoon(after: 60, tries: tries + 1) }        // busy or offline: try again
+            if !drew, tries < 4 { self.drawSoon(after: tries < 2 ? 6 : 60, tries: tries + 1) }      // busy or offline: try again, soon at first
             else if drew, self.shown.needsRedraw { self.drawSoon() }                  // changed again while drawing
         }
+    }
+
+    // back from another app: a drawing that was cut off starts again at once instead of waiting out its timer
+    func resumeDrawing() {
+        guard shown.needsRedraw, !drawing, modelVersion > 0 else { return }
+        drawNote = ""
+        drawSoon(after: 0.4)
     }
 
     func saveOutfit(named name: String) {

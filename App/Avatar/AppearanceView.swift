@@ -16,6 +16,10 @@ struct AppearanceView: View {
     @State private var sub: String?
     @State private var sort = Sort.relevance
     @State private var refine: String?
+    @State private var composing = false                     // the full-screen page where a search is typed
+    @State private var draft = ""
+    @State private var hints: [String] = []
+    @AppStorage("recentSearches") private var recentRaw = ""
     @State private var results: [Item] = []
     @State private var styles: [Item] = []
     @State private var next: String?
@@ -74,12 +78,14 @@ struct AppearanceView: View {
             ZStack(alignment: .top) {
                 stage
                 sheet.frame(height: max(geo.size.height - top, 0)).offset(y: top)
+                if hunting && composing { searchPage.zIndex(5) }
             }
         }
         .background(Color.bg)
         .task(id: active) { if active, results.isEmpty { await load() } }
         .onChange(of: phase) { _, now in
-            if now == .active, active, results.isEmpty, !loading { Task { await load() } }
+            guard now == .active else { return }
+            if active, results.isEmpty || failure != nil, !loading { Task { await load() } }       // a request cut off in the background
         }
         .alert("Price", isPresented: Binding(get: { pricing != nil }, set: { if !$0 { pricing = nil } })) {
             TextField("0 is Free, empty is Off Sale", text: $priceText).keyboardType(.numberPad)
@@ -176,21 +182,118 @@ struct AppearanceView: View {
 
     private var searchRow: some View {
         HStack(spacing: 12) {
-            Icon("magnifying-glass", size: 22).foregroundStyle(Color.faint)
-            TextField("Search", text: $query).submitLabel(.search).focused($typing)
-                .autocorrectionDisabled()
-                .onSubmit { refine = nil; Task { await load() } }
-                .accessibilityIdentifier("catalogSearch")
-            if !query.isEmpty {
-                Button { query = ""; refine = nil; typing = true; Task { await load() } } label: {
-                    Image(systemName: "xmark.circle").font(.system(size: 17)).foregroundStyle(Color.faint)
+            Button { compose(query) } label: {
+                HStack(spacing: 12) {
+                    Icon("magnifying-glass", size: 22).foregroundStyle(Color.faint)
+                    Text(query).lineLimit(1)
+                    Spacer(minLength: 0)
                 }
-                .accessibilityLabel("Clear search")
+                .contentShape(Rectangle())
             }
+            .accessibilityIdentifier("searchAgain").accessibilityLabel("Search: \(query)")
+            Button { compose("") } label: { Image(systemName: "xmark.circle").font(.system(size: 17)).foregroundStyle(Color.faint) }
+                .accessibilityLabel("Clear search")
             Button("Cancel", action: toggleSearch).foregroundStyle(Color.faint)
                 .accessibilityIdentifier("searchToggle")
         }
         .font(.builder(16)).frame(height: 28)
+    }
+
+    private var recents: [String] { recentRaw.split(separator: "\n").map(String.init) }
+
+    // the page the real app opens to type a search: the field, then what you searched before
+    private var searchPage: some View {
+        let typed = draft.trimmingCharacters(in: .whitespaces)
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 14) {
+                HStack(spacing: 10) {
+                    Icon("magnifying-glass", size: 16).foregroundStyle(Color.faint)
+                    TextField("", text: $draft, prompt: Text("Search items, outfits").foregroundStyle(Color.faint))
+                        .submitLabel(.search).focused($typing).autocorrectionDisabled().textInputAutocapitalization(.never)
+                        .tint(Color.bloxBlue)
+                        .onSubmit { run(draft) }
+                        .accessibilityIdentifier("catalogSearch")
+                }
+                .font(.builder(15)).padding(.horizontal, 12).frame(height: 36)
+                .background(Color.rgb(28, 29, 34), in: RoundedRectangle(cornerRadius: 9))
+                Button("Cancel") {
+                    composing = false
+                    typing = false
+                    if query.isEmpty { toggleSearch() }
+                }
+                .font(.builder(16)).foregroundStyle(Color.ink)
+                .accessibilityIdentifier("searchCancel")
+            }
+            .padding(.top, 4)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    if typed.isEmpty {
+                        if !recents.isEmpty {
+                            Text("Recent Searches").font(.builder(20, .bold)).padding(.top, 24).padding(.bottom, 10)
+                        }
+                        ForEach(recents, id: \.self) { q in
+                            searchLine("clock-spin-reverse", q) { forget(q) }
+                        }
+                    } else {
+                        ForEach(hints, id: \.self) { q in searchLine("magnifying-glass", q, remove: nil).padding(.top, q == hints.first ? 10 : 0) }
+                    }
+                }
+            }
+            .scrollDismissesKeyboard(.never)
+        }
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .foregroundStyle(Color.ink)
+        .background(Color.bg.ignoresSafeArea())
+        .task(id: draft) {
+            guard typed.count >= 2 else { hints = []; return }
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            let found = await Roblox.suggest(typed)
+            if !Task.isCancelled { hints = found }
+        }
+    }
+
+    private func searchLine(_ icon: String, _ text: String, remove: (() -> Void)?) -> some View {
+        HStack(spacing: 10) {
+            Button { run(text) } label: {
+                HStack(spacing: 10) {
+                    Icon(icon, size: 20)
+                    Text(text).font(.builder(15.5)).lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .accessibilityIdentifier("searchLine")
+            if let remove {
+                Button(action: remove) { Icon("x", size: 14).frame(width: 28, height: 28) }
+                    .accessibilityLabel("Remove \(text)")
+            }
+        }
+        .padding(.leading, 5)
+        .frame(height: 51)
+        .overlay(alignment: .bottom) { Rectangle().fill(Color.tile).frame(height: 1) }
+    }
+
+    private func compose(_ text: String) {
+        draft = text
+        composing = true
+        typing = true
+    }
+
+    private func run(_ text: String) {
+        let q = text.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return }
+        recentRaw = ([q] + recents.filter { $0.caseInsensitiveCompare(q) != .orderedSame }).prefix(12).joined(separator: "\n")
+        query = q
+        refine = nil
+        composing = false
+        typing = false
+        Task { await load() }
+    }
+
+    private func forget(_ text: String) {
+        recentRaw = recents.filter { $0 != text }.joined(separator: "\n")
     }
 
     private var tabs: some View {
@@ -715,8 +818,9 @@ struct AppearanceView: View {
         customize = false
         withAnimation { searching.toggle() }
         if searching {
-            typing = true
+            compose("")
         } else {
+            composing = false
             typing = false
             refine = nil
             if !query.isEmpty {

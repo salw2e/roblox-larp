@@ -276,6 +276,8 @@ final class SalBloxUITests: XCTestCase {
         sleep(3)
         shot("15b clothing")
         app.buttons["searchToggle"].tap()
+        XCTAssertTrue(app.buttons["searchCancel"].waitForExistence(timeout: 5), "search opens its own page")
+        shot("15b1 search page")
         let catalog = app.textFields["catalogSearch"]
         XCTAssertTrue(catalog.waitForExistence(timeout: 5))
         catalog.tap()
@@ -305,6 +307,13 @@ final class SalBloxUITests: XCTestCase {
             app.buttons["itemClose"].tap()
         }
         XCTAssertTrue(bought, "one of the first results could be bought")
+        app.buttons["searchAgain"].tap()           // the last search is remembered on the search page
+        XCTAssertTrue(app.buttons["searchCancel"].waitForExistence(timeout: 5))
+        app.textFields["catalogSearch"].typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 5))
+        XCTAssertTrue(app.buttons["searchLine"].firstMatch.waitForExistence(timeout: 5), "recent searches are listed")
+        XCTAssertTrue(app.buttons["searchLine"].firstMatch.label.contains("horns"), app.buttons["searchLine"].firstMatch.label)
+        shot("15b3 recent searches")
+        app.buttons["searchCancel"].tap()
         app.buttons["searchToggle"].tap()          // closing the search ends it
         XCTAssertTrue(app.buttons["tab-Home"].waitForExistence(timeout: 3), "the tab bar is back")
 
