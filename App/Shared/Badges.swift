@@ -27,9 +27,10 @@ struct NameLine: View {
     let profile: Profile
     var font: CGFloat = 30
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 0) {            // the icons carry their own margin, so no spacing on top of it
             Text(profile.shownName).font(.builder(font, .bold)).lineLimit(1).truncationMode(.tail).minimumScaleFactor(0.75)
                 .accessibilityIdentifier("displayName")
+                .padding(.trailing, font * 0.12)
             if profile.verified { VerifiedBadge(size: font * 0.75).fixedSize().accessibilityLabel("Verified") }
             MemberBadge(badge: profile.badge, size: font * 0.75).fixedSize()
         }

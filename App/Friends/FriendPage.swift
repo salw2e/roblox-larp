@@ -28,9 +28,9 @@ struct FriendPage: View {
                             if who.online { Circle().fill(Color.bg).frame(width: 20, height: 20).overlay(Circle().fill(Color.online).frame(width: 14, height: 14)).offset(x: -4, y: -4) }
                         }
                     VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 8) {
-                            Text(who.display).font(.builder(26, .bold)).lineLimit(1).minimumScaleFactor(0.75).accessibilityIdentifier("personName")
-                            if them?.person?.verified == true { VerifiedBadge(size: 19.5).fixedSize() }
+                        HStack(spacing: 3) {
+                            Text(who.display).font(.builder(27.5, .bold)).lineLimit(1).minimumScaleFactor(0.75).accessibilityIdentifier("personName")
+                            if them?.person?.verified == true { VerifiedBadge(size: 20.6).fixedSize() }
                         }
                         Text("@\(who.user)").font(.builder(12)).foregroundStyle(Color.faint).lineLimit(1)
                     }

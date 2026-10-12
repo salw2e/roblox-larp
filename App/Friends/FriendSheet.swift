@@ -27,7 +27,7 @@ struct FriendSheet: View {
                                 if who.online { Circle().fill(Color.bg).frame(width: 20, height: 20).overlay(Circle().fill(Color.online).frame(width: 14, height: 14)).offset(x: -4, y: -4) }
                             }
                         VStack(alignment: .leading, spacing: 3) {
-                            HStack(spacing: 6) {
+                            HStack(spacing: 2) {
                                 Text(who.display).font(.builder(20, .bold)).lineLimit(1).accessibilityIdentifier("friendName")
                                 if them?.person?.verified == true { VerifiedBadge(size: 15).fixedSize() }
                             }
