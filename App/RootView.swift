@@ -7,6 +7,7 @@ struct RootView: View {
     @EnvironmentObject var store: Store
     @State private var tab = MainTab.home
     @State private var menu = false
+    @State private var barHidden = false
     @State private var path: [Page] = []        // pages pushed over the tabs
     @State private var settings = false
     @State private var robux = false
@@ -79,10 +80,10 @@ struct RootView: View {
                     kept(.home) { HomeView(openMenu: openMenu, open: { open($0) }) }
                     kept(.moments) { MomentsView() }
                     kept(.chat) { ChatList(openMenu: openMenu, open: { open($0) }) }
-                    kept(.me) { AppearanceView(active: tab == .me, openMenu: openMenu, open: { open($0) }) }
+                    kept(.me) { AppearanceView(active: tab == .me, openMenu: openMenu, hideBar: { barHidden = $0 }, open: { open($0) }) }
                 }
                 .frame(maxHeight: .infinity)
-                bar
+                if !(barHidden && tab == .me) { bar }
             }
             if let id = friend {
                 Color.black.opacity(0.55).ignoresSafeArea().onTapGesture(perform: closeFriend)

@@ -275,7 +275,14 @@ final class SalBloxUITests: XCTestCase {
             let r = results.element(boundBy: i)
             guard r.isHittable else { continue }
             r.tap()
-            if !app.buttons["itemClose"].waitForExistence(timeout: 2) { r.tap() }
+            if !app.buttons["itemClose"].waitForExistence(timeout: 2) {
+                if i == 0 {
+                    XCTAssertFalse(app.buttons["tab-Home"].exists, "no tab bar while searching")
+                    sleep(3)
+                    shot("15b2 search try on")
+                }
+                r.tap()
+            }
             XCTAssertTrue(app.buttons["itemClose"].waitForExistence(timeout: 5))
             if app.buttons["buyButton"].waitForExistence(timeout: 8) {
                 buyOnPage()
@@ -286,6 +293,7 @@ final class SalBloxUITests: XCTestCase {
         }
         XCTAssertTrue(bought, "one of the first results could be bought")
         app.buttons["searchToggle"].tap()          // closing the search ends it
+        XCTAssertTrue(app.buttons["tab-Home"].waitForExistence(timeout: 3), "the tab bar is back")
 
         app.buttons["tab-Customize"].tap()
         XCTAssertTrue(app.buttons["addOutfit"].waitForExistence(timeout: 5))
