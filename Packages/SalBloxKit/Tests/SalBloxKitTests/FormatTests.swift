@@ -3,6 +3,10 @@ import XCTest
 
 final class FormatTests: XCTestCase {
     func testShortCounts() {
+        XCTAssertEqual(counted(1, "Friend"), "1 Friend")
+        XCTAssertEqual(counted(0, "Friend"), "0 Friends")
+        XCTAssertEqual(counted(35, "Follower"), "35 Followers")
+        XCTAssertEqual(counted(1200, "Follower"), "1.2K Followers")
         XCTAssertEqual(short(0), "0")
         XCTAssertEqual(short(1), "1")
         XCTAssertEqual(short(999), "999")

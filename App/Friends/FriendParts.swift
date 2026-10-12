@@ -10,14 +10,14 @@ func personName(_ store: Store, _ id: Int64, _ person: Parse.Person?) -> (displa
 @MainActor
 func counts(_ them: Roblox.Someone?) -> some View {
     func chip(_ n: Int, _ what: String) -> some View {
-        Text("\(short(n)) \(what)").font(.builder(14.5)).lineLimit(1).fixedSize().padding(.horizontal, 12).frame(height: 31)
+        Text(what == "Following" ? "\(short(n)) Following" : counted(n, what)).font(.builder(14.5)).lineLimit(1).fixedSize().padding(.horizontal, 12).frame(height: 31)
             .background(Color.tile.opacity(n == 0 ? 0.6 : 1), in: Capsule())
             .foregroundStyle(n == 0 ? Color.dim.opacity(0.6) : Color.ink)
     }
     return ScrollView(.horizontal, showsIndicators: false) {
         HStack(spacing: 8) {
-            if let n = them?.friends { chip(n, "Friends") }
-            if let n = them?.followers { chip(n, "Followers") }
+            if let n = them?.friends { chip(n, "Friend") }
+            if let n = them?.followers { chip(n, "Follower") }
             if let n = them?.following { chip(n, "Following") }
         }
     }

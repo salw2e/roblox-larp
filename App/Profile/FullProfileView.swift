@@ -46,8 +46,8 @@ struct FullProfileView: View {
                 .padding(.top, -20)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        chip("\(short(p.friends)) Friends", dim: p.friends == 0)
-                        chip("\(short(p.followers)) Followers", dim: p.followers == 0)
+                        chip(counted(p.friends, "Friend"), dim: p.friends == 0)
+                        chip(counted(p.followers, "Follower"), dim: p.followers == 0)
                         chip("\(short(p.following)) Following", dim: p.following == 0)
                     }
                 }

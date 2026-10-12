@@ -97,7 +97,7 @@ final class SalBloxUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["followersChip"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.staticTexts["followersChip"].label, "5.6M Followers")
-        XCTAssertEqual(app.staticTexts["friendsChip"].label, "1 Friends")
+        XCTAssertEqual(app.staticTexts["friendsChip"].label, "1 Friend")
         XCTAssertEqual(app.staticTexts["displayName"].label, "salw2e")
         XCTAssertEqual(app.staticTexts["username"].label, "@salw2e")
         XCTAssertTrue(any("avatar3D").exists, "the profile shows the 3D avatar")

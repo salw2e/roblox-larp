@@ -101,8 +101,8 @@ struct ProfileView: View {
         let p = store.profile
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                chip("\(short(p.friends)) Friends", dim: p.friends == 0, id: "friendsChip")     // any count at 0 is greyed
-                chip("\(short(p.followers)) Followers", dim: p.followers == 0, id: "followersChip")
+                chip(counted(p.friends, "Friend"), dim: p.friends == 0, id: "friendsChip")     // any count at 0 is greyed
+                chip(counted(p.followers, "Follower"), dim: p.followers == 0, id: "followersChip")
                 chip("\(short(p.following)) Following", dim: p.following == 0, id: "followingChip")
             }
         }

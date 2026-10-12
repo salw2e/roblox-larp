@@ -12,6 +12,10 @@ public func short(_ n: Int) -> String {
     return "\(n)"
 }
 
+public func counted(_ n: Int, _ one: String) -> String {
+    "\(short(n)) \(n == 1 ? one : one + "s")"
+}
+
 private func trim(_ d: Double) -> String {
     d == d.rounded() ? String(Int(d)) : String(format: "%.1f", d)
 }
