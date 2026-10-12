@@ -13,9 +13,11 @@ csrf = ""
 BUDGET_FILE = os.path.join(CACHE, "budget.json")
 TYPES_FILE = os.path.join(CACHE, "types.json")
 LOOKS_FILE = os.path.join(CACHE, "looks.json")
+DRAWN_FILE = os.path.join(CACHE, "drawn.json")
 budget = {"left": None, "reset_at": 0.0}
 asset_types = {}
 real_looks = {}
+drawn = {}
 render_lock = threading.Lock()
 store_lock = threading.Lock()
 calls = collections.deque()
@@ -41,6 +43,10 @@ def recall():
         pass
     try:
         real_looks.update(json.load(open(LOOKS_FILE)))
+    except (OSError, ValueError):
+        pass
+    try:
+        drawn.update(json.load(open(DRAWN_FILE)))
     except (OSError, ValueError):
         pass
 
@@ -327,6 +333,15 @@ def look_of_outfit(base, wear):
                 return real
         except Refused:
             pass
+    key = look_key(definition)
+    kept = drawn.get(key)
+    if kept:
+        # drawn before: the same outfit again costs nothing
+        folder = os.path.join(CACHE, kept["obj"].split("/")[-2])
+        if os.path.exists(os.path.join(folder, "done")):
+            os.utime(folder)
+            return {"definition": definition, "image": None, "model": kept}
+        drawn.pop(key, None)
     body = {"thumbnailConfig": {"thumbnailId": 1, "thumbnailType": "3d", "size": "420x420"}, "avatarDefinition": definition}
     with render_lock:
         if budget_now()["left"] is not None and budget_now()["left"] < 2:
@@ -337,7 +352,12 @@ def look_of_outfit(base, wear):
             time.sleep(pause)
             r = rbx("https://avatar.roblox.com/v1/avatar/render", body)
             if r.get("state") == "Completed" and r.get("imageUrl"):
-                return {"definition": definition, "image": None, "model": store_model(r["imageUrl"])}
+                model = store_model(r["imageUrl"])
+                while len(drawn) > 400:
+                    drawn.pop(next(iter(drawn)))
+                drawn[key] = model
+                remember(DRAWN_FILE, drawn)
+                return {"definition": definition, "image": None, "model": model}
             if r.get("state") != "Pending":
                 raise Refused(f"Roblox could not draw that outfit ({r.get('state')}).")
         raise Refused("Roblox took too long to draw the outfit. Try again.")
@@ -522,6 +542,10 @@ def demo():
     d = outfit(user["definition"], [{"id": 1028606}, {"id": 144076760}, {"id": 144076760}])
     assert [a["id"] for a in d["assets"]] == [1028606, 144076760] and d["bodyColors"] == user["definition"]["bodyColors"]
     worn = look_of_outfit(user["definition"], [{"id": 215718515}, {"id": 1028606}]) if os.environ.get("DEMO_RENDER") else user
+    if os.environ.get("DEMO_RENDER"):
+        spent = budget_now()["left"]
+        again = look_of_outfit(user["definition"], [{"id": 215718515}, {"id": 1028606}])
+        assert again["model"] == worn["model"] and budget_now()["left"] == spent, "the same outfit twice must not be drawn twice"
     key = worn["model"]["obj"].split("/")[-2]
     obj = open(os.path.join(CACHE, key, "a.obj")).read()
     assert obj.count("\nv ") > 500 and "mtllib a.mtl" in obj
