@@ -8,6 +8,7 @@ struct SendRobuxSheet: View {
     @State private var to: Friend?
     @State private var amount = ""
     @State private var refused = false
+    @State private var anyone: [Friend] = []        // everyone on roblox the search finds, not only friends
 
     var body: some View {
         let p = store.profile
@@ -32,23 +33,27 @@ struct SendRobuxSheet: View {
             .padding(.horizontal, 14).frame(height: 39)
             .overlay(Capsule().stroke(Color.tile, lineWidth: 1))
             .padding(.top, 16)
-            Text("My friends (\(grouped(p.friendList.count)))").font(.builder(15.9, .bold)).padding(.top, 20)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 20) {
-                    ForEach(shown) { f in
-                        Button { to = f; amount = "" } label: {
-                            HStack(spacing: 15) {
-                                RemoteCircle(url: f.headshot, size: 48)
-                                Text(f.displayName).font(.builder(14, .bold)).lineLimit(1)
-                                Spacer()
-                            }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(PressStyle())
-                        .accessibilityIdentifier("sendTo")
+                    if !shown.isEmpty || search.isEmpty {
+                        Text("My friends (\(grouped(search.isEmpty ? p.friendList.count : shown.count)))").font(.builder(15.9, .bold)).padding(.top, 4).padding(.bottom, -4)
+                    }
+                    ForEach(shown) { f in row(f, id: "sendTo") }
+                    let others = anyone.filter { a in !shown.contains { $0.id == a.id } }
+                    if !others.isEmpty {
+                        Text("People").font(.builder(15.9, .bold)).padding(.top, shown.isEmpty ? 4 : 8)
+                        ForEach(others) { f in row(f, id: "sendToAnyone") }
                     }
                 }
                 .padding(.top, 16).padding(.bottom, 24)
+            }
+            .task(id: search) {
+                let q = search.trimmingCharacters(in: .whitespaces)
+                guard q.count >= 3 else { anyone = []; return }           // roblox wants three letters
+                try? await Task.sleep(for: .milliseconds(450))
+                guard !Task.isCancelled else { return }
+                let found = await Roblox.people(q)
+                if !Task.isCancelled { anyone = found }
             }
         }
         .foregroundStyle(Color.ink)
@@ -68,5 +73,21 @@ struct SendRobuxSheet: View {
         } message: {
             Text("Enter an amount you have, more than 0.")
         }
+    }
+
+    private func row(_ f: Friend, id: String) -> some View {
+        Button { to = f; amount = "" } label: {
+            HStack(spacing: 15) {
+                RemoteCircle(url: f.headshot, size: 48)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(f.displayName).font(.builder(14, .bold)).lineLimit(1)
+                    if id == "sendToAnyone" { Text("@\(f.name)").font(.builder(12)).foregroundStyle(Color.faint).lineLimit(1) }
+                }
+                Spacer()
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressStyle())
+        .accessibilityIdentifier(id)
     }
 }
