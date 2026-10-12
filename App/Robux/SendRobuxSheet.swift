@@ -9,6 +9,7 @@ struct SendRobuxSheet: View {
     @State private var amount = "25"
     @State private var refused = false
     @State private var reviewing = false
+    @State private var joined: String?
     @State private var detent = PresentationDetent.height(822)
     @State private var anyone: [Friend] = []        // everyone on roblox the search finds, not only friends
 
@@ -29,7 +30,7 @@ struct SendRobuxSheet: View {
             }
             .frame(height: 36)
             .padding(.top, to == nil ? 13 : 23)
-            if let to { amountPage(to) } else {
+            if let to, reviewing { reviewPage(to, number(from: amount)) } else if let to { amountPage(to) } else {
             HStack(spacing: 10) {
                 Icon("magnifying-glass", size: 20)
                 TextField("", text: $search, prompt: Text("Search").foregroundStyle(Color.faint))
@@ -69,6 +70,10 @@ struct SendRobuxSheet: View {
         .presentationDragIndicator(to == nil ? .hidden : .visible)
         .presentationCornerRadius(16)
         .presentationBackground(Color.rgb(25, 26, 31))
+        .task(id: to?.id) {
+            joined = nil
+            if let id = to?.id { joined = await Roblox.joinedYear(id) }
+        }
         .onChange(of: to) { _, picked in
             reviewing = false
             withAnimation { detent = .height(picked == nil ? 822 : 560) }
@@ -81,6 +86,65 @@ struct SendRobuxSheet: View {
     }
 
     // who, how much, Next: the amount screen of the real app
+    // after Next: who it goes to, how much, Send or Edit
+    private func reviewPage(_ f: Friend, _ n: Int) -> some View {
+        let panel = Color.rgb(32, 33, 38)
+        func fact(_ icon: String, _ text: String) -> some View {
+            HStack(spacing: 5) {
+                Icon(icon, size: 15, filled: true)
+                Text(text).font(.builder(13.5))
+            }
+            .foregroundStyle(Color.faint)
+        }
+        return VStack(spacing: 0) {
+            VStack(spacing: 0) {
+                RemoteCircle(url: f.headshot, size: 62)
+                Text(f.displayName).font(.builder(15.5, .bold)).lineLimit(1).padding(.top, 12)
+                Text("@\(f.name)").font(.builder(14)).foregroundStyle(Color.faint).lineLimit(1).padding(.top, 3)
+                HStack(spacing: 12) {
+                    fact("calendar", store.profile.friendList.contains { $0.id == f.id } ? "Connection" : "New Connection")
+                    fact("two-people", "0 mutual Connections")
+                }
+                .padding(.top, 16)
+                if let joined { fact("moon", "Joined in \(joined)").padding(.top, 10) }
+            }
+            .frame(maxWidth: .infinity).padding(.vertical, 22)
+            .background(panel, in: RoundedRectangle(cornerRadius: 8))
+            .padding(.top, 14)
+            HStack(spacing: 8) {
+                Icon("robux", size: 30)
+                Text(grouped(n)).font(.builder(44, .bold))
+            }
+            .frame(maxWidth: .infinity).frame(height: 86)
+            .background(panel, in: RoundedRectangle(cornerRadius: 8))
+            .padding(.top, 10)
+            HStack(spacing: 8) {
+                Button {
+                    if store.profile.send(n) {
+                        store.say("You sent \(grouped(n)) Robux")
+                        dismiss()
+                    } else { refused = true }
+                } label: {
+                    Text("Send").font(.builder(16, .bold)).foregroundStyle(.white).frame(maxWidth: .infinity).frame(height: 41)
+                        .background(Color.bloxBlue, in: RoundedRectangle(cornerRadius: 9))
+                }
+                .accessibilityIdentifier("sendConfirm")
+                Button { reviewing = false } label: {
+                    Text("Edit").font(.builder(16, .bold)).frame(maxWidth: .infinity).frame(height: 41)
+                        .background(Color.tile, in: RoundedRectangle(cornerRadius: 9))
+                }
+                .accessibilityIdentifier("sendEdit")
+            }
+            .buttonStyle(PressStyle())
+            .padding(.top, 12)
+            Text("You need an age check or parental consent to send Robux. Once you send, you cannot cancel.")
+                .font(.builder(12)).foregroundStyle(Color.faint).frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true).padding(.top, 12)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, -6)
+    }
+
     private func amountPage(_ f: Friend) -> some View {
         let n = number(from: amount)
         return VStack(spacing: 0) {
@@ -93,22 +157,10 @@ struct SendRobuxSheet: View {
                     let n = number(from: String(digits(in: typed).prefix(9)))
                     amount = n == 0 ? "" : grouped(n)                    // 2000 reads 2,000 while you type
                 })).keyboardType(.numberPad).font(.builder(44, .bold)).fixedSize()
-                    .disabled(reviewing)
                     .accessibilityIdentifier("sendAmount")
             }
             .frame(height: 53)
             .padding(.top, 30)
-            if reviewing {
-                HStack {
-                    Text("Balance after").font(.builder(14.5))
-                    Spacer()
-                    Icon("robux", size: 16)
-                    Text(grouped(store.profile.robux - n)).font(.builder(14.5, .bold))
-                }
-                .padding(.horizontal, 14).frame(height: 42)
-                .background(Color.tile, in: RoundedRectangle(cornerRadius: 8))
-                .padding(.horizontal, 11).padding(.top, 45)
-            } else {
                 HStack(spacing: 8) {
                     ForEach([25, 50, 100, 200], id: \.self) { preset in
                         Button { amount = "\(preset)" } label: {
@@ -125,13 +177,11 @@ struct SendRobuxSheet: View {
                     }
                 }
                 .padding(.top, 45)
-            }
             Button {
                 guard n > 0, n <= store.profile.robux else { refused = true; return }
-                if !reviewing { reviewing = true; return }
-                if store.profile.send(n) { dismiss() } else { refused = true }
+                reviewing = true
             } label: {
-                Text(reviewing ? "Send" : "Next").font(.builder(16, .bold)).foregroundStyle(.white)
+                Text("Next").font(.builder(16, .bold)).foregroundStyle(.white)
                     .frame(maxWidth: .infinity).frame(height: 41)
                     .background(Color.bloxBlue, in: RoundedRectangle(cornerRadius: 9))
             }

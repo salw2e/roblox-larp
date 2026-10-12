@@ -83,6 +83,12 @@ enum Roblox {
         return rows.compactMap { $0["Query"] as? String }
     }
 
+    static func joinedYear(_ id: Int64) async -> String? {
+        guard let data = try? await fetch(URL(string: "https://users.roblox.com/v1/users/\(id)")!),
+              let d = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any], let created = d["created"] as? String else { return nil }
+        return String(created.prefix(4))
+    }
+
     static func people(_ keyword: String) async -> [Friend] {
         guard let data = try? await fetch(url("https://users.roblox.com/v1/users/search", ["keyword": keyword, "limit": "10"])) else { return [] }
         let users = Parse.users(data)

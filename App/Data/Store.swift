@@ -8,6 +8,7 @@ final class Store: ObservableObject {
     @Published private(set) var modelVersion = 0
     @Published private(set) var drawing = false
     @Published var drawNote = ""                     // what came of the last drawing ("2 more this hour", or why not)
+    @Published var toast: String?
     @Published private(set) var saveProblem = ""
     @Published private(set) var undone: [[String]] = []
     @Published private(set) var redone: [[String]] = []
@@ -163,6 +164,15 @@ final class Store: ObservableObject {
             self.autoDraw = nil
             if !drew, tries < 4 { self.drawSoon(after: tries < 2 ? 6 : 60, tries: tries + 1) }      // busy or offline: try again, soon at first
             else if drew, self.shown.needsRedraw { self.drawSoon() }                  // changed again while drawing
+        }
+    }
+
+    // the white bar that slides in on top, "You sent 200 Robux"
+    func say(_ text: String) {
+        toast = text
+        Task {
+            try? await Task.sleep(for: .seconds(4))
+            if toast == text { toast = nil }
         }
     }
 
