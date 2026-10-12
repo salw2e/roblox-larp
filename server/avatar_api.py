@@ -12,8 +12,10 @@ UA = "Mozilla/5.0"
 csrf = ""
 BUDGET_FILE = os.path.join(CACHE, "budget.json")
 TYPES_FILE = os.path.join(CACHE, "types.json")
+LOOKS_FILE = os.path.join(CACHE, "looks.json")
 budget = {"left": None, "reset_at": 0.0}
 asset_types = {}
+real_looks = {}
 render_lock = threading.Lock()
 store_lock = threading.Lock()
 calls = collections.deque()
@@ -37,6 +39,10 @@ def recall():
         asset_types.update({int(k): v for k, v in json.load(open(TYPES_FILE)).items()})
     except (OSError, ValueError):
         pass
+    try:
+        real_looks.update(json.load(open(LOOKS_FILE)))
+    except (OSError, ValueError):
+        pass
 
 def note_budget(headers):
     left, reset = headers.get("x-ratelimit-remaining"), headers.get("x-ratelimit-reset")
@@ -49,11 +55,11 @@ def budget_now():
         budget["left"] = None
     return {"left": budget["left"], "resetIn": max(0, int(budget["reset_at"] - time.time())) if budget["left"] is not None else 0}
 
-SINGLE = {2, 11, 12, 17, 18, 27, 28, 29, 30, 31, 79} | set(range(48, 57))
+SINGLE = {2, 11, 12, 17, 18, 27, 28, 29, 30, 31, 76, 77, 78, 79} | set(range(48, 57))
 LAYERED = set(range(64, 73))
 ACCESSORY = {8, 41, 42, 43, 44, 45, 46, 47}
 MAX_ACCESSORIES = 10
-WEARABLE = SINGLE | LAYERED | ACCESSORY | {76, 77, 78}
+WEARABLE = SINGLE | LAYERED | ACCESSORY
 DEFAULT_BODY = {
     "bodyColors": {k: "#A3A2A5" for k in ("headColor", "leftArmColor", "leftLegColor", "rightArmColor", "rightLegColor", "torsoColor")},
     "scales": {"depth": 1, "head": 1, "height": 1, "proportion": 0, "width": 1, "bodyType": 0},
@@ -223,6 +229,10 @@ def look_of_user(username):
         raise Refused("No Roblox user with that name.")
     uid = found["data"][0]["id"]
     a = rbx(f"https://avatar.roblox.com/v2/avatar/users/{uid}/avatar")
+    for x in a.get("assets", []):
+        if x.get("assetType", {}).get("id"):
+            asset_types[x["id"]] = x["assetType"]["id"]
+    remember(TYPES_FILE, asset_types)
     colours = a.get("bodyColor3s", {})
     definition = {
         "assets": [{k: v for k, v in x.items() if k in ("id", "meta")} for x in a.get("assets", [])],
@@ -232,7 +242,14 @@ def look_of_user(username):
     }
     model = store_model(wait_for(lambda: rbx(f"https://thumbnails.roblox.com/v1/users/avatar-3d?userId={uid}")))
     image = wait_for(lambda: rbx(f"https://thumbnails.roblox.com/v1/users/avatar?userIds={uid}&size=720x720&format=Png", login=False))
+    while len(real_looks) > 300:
+        real_looks.pop(next(iter(real_looks)))
+    real_looks[look_key(definition)] = username
+    remember(LOOKS_FILE, real_looks)
     return {"definition": definition, "image": image, "model": model}
+
+def look_key(d):
+    return hashlib.sha1(json.dumps([sorted(a["id"] for a in d["assets"]), d["bodyColors"], d["scales"], d["playerAvatarType"]], sort_keys=True).encode()).hexdigest()
 
 def asset_ids(wear):
     ids = []
@@ -245,18 +262,33 @@ def asset_ids(wear):
     return ids
 
 def one_per_slot(picks, worn_before=()):
-    picks = [(aid, kind) for aid, kind in picks if kind in WEARABLE or (kind is None and aid in worn_before)]
+    picks = [(aid, kind) for aid, kind in picks if kind in WEARABLE or aid in worn_before]
     last = {kind: aid for aid, kind in picks if kind in SINGLE}
     extras = [aid for aid, kind in picks if kind in ACCESSORY]
     dropped = set(extras[:-MAX_ACCESSORIES]) if len(extras) > MAX_ACCESSORIES else set()
     return [aid for aid, kind in picks if aid not in dropped and (kind not in SINGLE or last[kind] == aid)]
 
+def learn_types(ids):
+    missing = [i for i in dict.fromkeys(ids) if i not in asset_types]
+    for n in range(0, len(missing), 100):
+        ask = {"items": [{"itemType": "Asset", "id": i} for i in missing[n:n + 100]]}
+        try:
+            found = rbx("https://catalog.roblox.com/v1/catalog/items/details", ask)
+        except Refused:
+            try:
+                found = rbx("https://catalog.roblox.com/v1/catalog/items/details", ask, login=False)
+            except Refused:
+                break
+        for item in found.get("data", []):
+            if item.get("assetType"):
+                asset_types[item["id"]] = item["assetType"]
+    if any(i in asset_types for i in missing):
+        remember(TYPES_FILE, asset_types)
+
 def type_of(aid):
     if aid not in asset_types:
         try:
             asset_types[aid] = rbx(f"https://economy.roblox.com/v2/assets/{aid}/details", login=False).get("AssetTypeId")
-        except Busy:
-            raise
         except Refused:
             return None
         remember(TYPES_FILE, asset_types)
@@ -265,7 +297,9 @@ def type_of(aid):
 def outfit(base, wear):
     base = base or {}
     known = {a["id"]: a for a in base.get("assets", [])}
-    picks = [(aid, type_of(aid)) for aid in dict.fromkeys(asset_ids(wear))]
+    ids = list(dict.fromkeys(asset_ids(wear)))
+    learn_types(ids)
+    picks = [(aid, type_of(aid)) for aid in ids]
     kinds = dict(picks)
     assets = []
     for n, aid in enumerate(one_per_slot(picks, set(known))):
@@ -284,6 +318,15 @@ def outfit(base, wear):
 
 def look_of_outfit(base, wear):
     definition = outfit(base, wear)
+    owner = real_looks.get(look_key(definition))
+    if owner:
+        # exactly what a real user wears: their own roblox picture, and no render used up
+        try:
+            real = look_of_user(owner)
+            if look_key(real["definition"]) == look_key(definition):
+                return real
+        except Refused:
+            pass
     body = {"thumbnailConfig": {"thumbnailId": 1, "thumbnailType": "3d", "size": "420x420"}, "avatarDefinition": definition}
     with render_lock:
         if budget_now()["left"] is not None and budget_now()["left"] < 2:
@@ -456,14 +499,22 @@ def demo():
     assert "social" in extras and isinstance(extras["voice"], bool), extras
     got = badges_of(261)
     assert isinstance(got, list) and all("name" in x for x in got), got
+    before = budget_now()
     user = look_of_user("builderman")
     assert user["definition"]["bodyColors"]["headColor"].startswith("#") and user["model"]["obj"].endswith("/a.obj")
     assert user["image"].startswith("https://")
     assert one_per_slot([(1, 8), (2, 11), (3, 8), (4, 11), (5, 12), (6, 61), (7, None)]) == [1, 3, 4, 5]
+    assert one_per_slot([(1, 79), (2, 78), (3, 79), (4, 78), (5, 92)]) == [3, 4]                       # one head, one mood, no backgrounds
+    same = look_of_outfit(user["definition"], [{"id": a["id"]} for a in user["definition"]["assets"]])
+    assert same["image"] == user["image"] or same["image"].startswith("https://"), same                # a real user's exact look comes back as their own picture
+    assert budget_now()["left"] == before["left"], (before, budget_now())                                             # and costs no render
     hats = [(100 + i, 8) for i in range(12)]
     assert one_per_slot(hats + [(9, 11)]) == [102 + i for i in range(10)] + [9]      # the newest ten accessories
     assert type_of(1028606) == type_of(1028606) and 1028606 in asset_types
-    assert type_of(1142116) is None and 1142116 not in asset_types
+    learn_types([63690008, 75789087422384, 86500008])
+    assert (asset_types[63690008], asset_types[75789087422384], asset_types[86500008]) == (41, 92, 27), asset_types
+    assert [x["id"] for x in outfit(None, [{"id": 63690008}, {"id": 75789087422384}])["assets"]] == [63690008]    # a profile background is not clothing
+    assert type_of(3) is None and 3 not in asset_types
     assert one_per_slot([(1142116, None), (5, 8)], {1142116}) == [1142116, 5]
     assert one_per_slot([(1142116, None), (5, 8)]) == [5]
     kept = outfit(user["definition"], [{"id": 1080951}, {"id": 1142116}])
