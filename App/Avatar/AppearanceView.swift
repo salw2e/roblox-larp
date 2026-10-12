@@ -16,6 +16,7 @@ struct AppearanceView: View {
     @State private var sub: String?
     @State private var sort = Sort.relevance
     @State private var refine: String?
+    @State private var topics: [String] = []
     @State private var composing = false                     // the full-screen page where a search is typed
     @State private var draft = ""
     @State private var hints: [String] = []
@@ -41,10 +42,9 @@ struct AppearanceView: View {
     @State private var renaming: Outfit?
     @GestureState private var pull: CGFloat = 0
     @FocusState private var typing: Bool
-    private let raisedTop: CGFloat = 48
+    private var raisedTop: CGFloat { hunting ? 40 : 48 }
     private var hunting: Bool { searching && !customize }
     private var restTop: CGFloat { hunting ? 278 : 316 }
-    private static let refinements = ["black", "white", "red", "blue", "pink", "green", "purple", "orange", "yellow", "brown"]
 
     enum Sort: String, CaseIterable { case relevance = "Relevance", low = "Price: low to high", high = "Price: high to low" }
 
@@ -193,10 +193,18 @@ struct AppearanceView: View {
             .accessibilityIdentifier("searchAgain").accessibilityLabel("Search: \(query)")
             Button { compose("") } label: { Image(systemName: "xmark.circle").font(.system(size: 17)).foregroundStyle(Color.faint) }
                 .accessibilityLabel("Clear search")
-            Button("Cancel", action: toggleSearch).foregroundStyle(Color.faint)
+            Button("Cancel", action: toggleSearch).foregroundStyle(Color.ink)
                 .accessibilityIdentifier("searchToggle")
+                .padding(.leading, 18)
         }
         .font(.builder(16)).frame(height: 28)
+        .background(alignment: .leading) {
+            // the glassy field behind the search text, Cancel sits outside it
+            GeometryReader { g in
+                RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.12))
+                    .frame(width: max(g.size.width - 62, 0), height: 34).offset(x: -8, y: -3)
+            }
+        }
     }
 
     private var recents: [String] { recentRaw.split(separator: "\n").map(String.init) }
@@ -287,8 +295,10 @@ struct AppearanceView: View {
         recentRaw = ([q] + recents.filter { $0.caseInsensitiveCompare(q) != .orderedSame }).prefix(12).joined(separator: "\n")
         query = q
         refine = nil
+        topics = []
         composing = false
         typing = false
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) { raised = true }      // results fill the screen, like the real one
         Task { await load() }
     }
 
@@ -323,7 +333,7 @@ struct AppearanceView: View {
                     .accessibilityIdentifier("sheetHandle").accessibilityLabel(raised ? "Lower the list" : "Raise the list")
                     .accessibilityAddTraits(.isButton)
                 if customize { shelfTabs } else { categoryTabs; subTabs }
-                if hunting && !query.isEmpty { refineChips }
+                if hunting && !query.isEmpty && !topics.isEmpty { refineChips }
             }
             .simultaneousGesture(sheetDrag)
             ScrollView {
@@ -413,7 +423,7 @@ struct AppearanceView: View {
     private var refineChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(Self.refinements, id: \.self) { word in
+                ForEach(topics, id: \.self) { word in
                     Button {
                         refine = refine == word ? nil : word
                         Task { await load() }
@@ -450,7 +460,13 @@ struct AppearanceView: View {
         return VStack(alignment: .leading, spacing: 0) {
             if category == "Backgrounds" && query.isEmpty { plusBanner.padding(.top, 10) }
             if hunting && !query.isEmpty {
-                Color.clear.frame(height: 12)
+                if topics.isEmpty {
+                    (Text("Showing results for ") + Text(query).font(.builder(15.5, .bold))).font(.builder(15.5)).lineLimit(1)
+                        .padding(.top, 14).padding(.bottom, 14)
+                        .accessibilityIdentifier("showingResults")
+                } else {
+                    Color.clear.frame(height: 12)
+                }
             } else {
                 Text(front ? "Recommended For You" : query.isEmpty ? category : "Results").font(.builder(20, .bold))
                     .frame(height: 24).padding(.top, 10.5).padding(.bottom, 12)
@@ -542,7 +558,7 @@ struct AppearanceView: View {
                         Icon("robux", size: 20)
                         Text(grouped(price)).font(.builder(16, .bold))
                     } else {
-                        Text(t.price == nil ? "Off Sale" : "Get").font(.builder(16, .bold))
+                        Text(t.price == nil ? "Off Sale" : "Free").font(.builder(16, .bold))
                     }
                 }
                 .foregroundStyle(.white).frame(maxWidth: .infinity).frame(height: 40)
@@ -823,6 +839,7 @@ struct AppearanceView: View {
             composing = false
             typing = false
             refine = nil
+            topics = []
             if !query.isEmpty {
                 query = ""
                 Task { await load() }
@@ -845,6 +862,10 @@ struct AppearanceView: View {
                 results = page.items
                 next = page.next
                 failure = page.items.isEmpty ? "Nothing found." : nil
+                if hunting, !query.isEmpty, refine == nil {
+                    let asked = query, found = await Roblox.topics(asked, among: page.items)
+                    if asked == query, mine == self.asked { topics = found }
+                }
                 break
             } catch {
                 guard mine == asked else { return }

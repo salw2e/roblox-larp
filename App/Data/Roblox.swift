@@ -171,6 +171,29 @@ enum Roblox {
         return []
     }
 
+    // the words roblox offers under a search to narrow it; none for most short searches
+    static func topics(_ query: String, among items: [Item]) async -> [String] {
+        guard !items.isEmpty, let body = try? JSONSerialization.data(withJSONObject: [
+            "items": items.prefix(30).map { ["targetId": $0.id, "itemType": $0.bundle ? "Bundle" : "Asset"] as [String: Any] },
+            "selectTopics": [String](), "inputQuery": query, "maxResult": 20, "genderType": 0] as [String: Any]) else { return [] }
+        for _ in 0..<2 {
+            var r = URLRequest(url: URL(string: "https://catalog.roblox.com/v1/topic/get-topics")!, timeoutInterval: 15)
+            r.httpMethod = "POST"
+            r.httpBody = body
+            r.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            r.setValue(await Token.shared.value, forHTTPHeaderField: "x-csrf-token")
+            guard let (data, reply) = try? await URLSession.shared.data(for: r), let http = reply as? HTTPURLResponse else { return [] }
+            if http.statusCode == 403, let t = http.value(forHTTPHeaderField: "x-csrf-token") {
+                await Token.shared.set(t)
+                continue
+            }
+            guard http.statusCode == 200, let d = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                  let rows = d["topics"] as? [[String: Any]] else { return [] }
+            return rows.compactMap { $0["displayName"] as? String }
+        }
+        return []
+    }
+
     static func recommended(for item: Item, bundleType: Int?) async -> [Item] {
         let u = item.bundle
             ? url("https://catalog.roblox.com/v2/recommendations/bundles", ["bundleTypeId": "\(bundleType ?? 1)", "contextBundleId": "\(item.id)", "numItems": "12"])
