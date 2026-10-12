@@ -16,12 +16,11 @@ struct Buying: ViewModifier {
                 item = nil
                 if price == 0 { finish(new) } else if price <= store.profile.robux { confirm = new } else { short = new }
             }
-            .alert("Buy Item", isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }), presenting: confirm) { it in
-                Button("Buy Now") { finish(it) }
-                Button("Cancel", role: .cancel) {}
-            } message: { it in
-                let after = store.profile.robux - (it.price ?? 0)
-                Text("Would you like to buy \(it.name) for \(grouped(it.price ?? 0)) Robux? Your balance after this transaction will be \(grouped(after)) Robux.")
+            .overlay {
+                if let it = confirm {
+                    BuyItemCard(name: it.name, price: it.price ?? 0, thumb: it.thumb, close: { confirm = nil }) { finish(it) }
+                        .transition(.opacity)
+                }
             }
             .overlay {
                 if let it = short {
@@ -30,6 +29,7 @@ struct Buying: ViewModifier {
                 }
             }
             .animation(.easeOut(duration: 0.18), value: short?.key)
+            .animation(.easeOut(duration: 0.18), value: confirm?.key)
     }
 
     private func finish(_ it: Item) {
@@ -43,6 +43,86 @@ extension View {
     }
 }
 
+// the card roblox shows over the dimmed screen when you buy
+struct PopupCard<Content: View>: View {
+    let title: String
+    let close: () -> Void
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.55).ignoresSafeArea().onTapGesture(perform: close)
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text(title).font(.builder(20, .bold))
+                    Spacer()
+                    Button(action: close) { Icon("x", size: 22) }.accessibilityIdentifier("popupClose").accessibilityLabel("Close")
+                }
+                content
+            }
+            .foregroundStyle(Color.ink)
+            .padding(.horizontal, 15).padding(.top, 19).padding(.bottom, 18)
+            .frame(width: 286)
+            .background(Color.rgb(25, 26, 31), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.tile, lineWidth: 1))
+        }
+        .buttonStyle(PressStyle())
+    }
+}
+
+struct PopupItemLine: View {
+    let name: String
+    let price: Int
+    let thumb: String?
+    var body: some View {
+        HStack(spacing: 16) {
+            if let thumb { RemoteImage(url: thumb, fill: false).frame(width: 38, height: 38) }
+            VStack(alignment: .leading, spacing: 6) {
+                Text(name).font(.builder(14.5, .bold)).lineLimit(1)
+                HStack(spacing: 4) {
+                    Icon("robux", size: 16)
+                    Text(grouped(price)).font(.builder(14.5, .bold))
+                }
+            }
+        }
+        .padding(.leading, thumb == nil ? 0 : 19).padding(.top, 22)
+    }
+}
+
+private func popupButton(_ text: String) -> some View {
+    Text(text).font(.builder(16, .bold)).foregroundStyle(.white).frame(maxWidth: .infinity).frame(height: 35)
+        .background(Color.bloxBlue, in: RoundedRectangle(cornerRadius: 8))
+}
+
+private func popupFootnote(_ text: String) -> some View {
+    Text(text).font(.builder(12)).foregroundStyle(Color.faint).multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.top, 15)
+}
+
+struct BuyItemCard: View {
+    @EnvironmentObject var store: Store
+    let name: String
+    let price: Int
+    let thumb: String?
+    let close: () -> Void
+    let buy: () -> Void
+
+    var body: some View {
+        PopupCard(title: "Buy item", close: close) {
+            PopupItemLine(name: name, price: price, thumb: thumb)
+            Text("Your balance after this purchase will be \(grouped(store.profile.robux - price)) Robux.")
+                .font(.builder(13.5)).foregroundStyle(Color.faint).fixedSize(horizontal: false, vertical: true).padding(.top, 22)
+                .accessibilityIdentifier("balanceAfter")
+            Button {
+                close()
+                buy()
+            } label: { popupButton("Buy") }
+            .accessibilityIdentifier("buyItemConfirm")
+            .padding(.top, 26)
+            popupFootnote("Roblox Terms of Use apply.")
+        }
+    }
+}
+
 struct BuyRobuxAndItem: View {
     @EnvironmentObject var store: Store
     let item: Item
@@ -53,77 +133,49 @@ struct BuyRobuxAndItem: View {
 
     var body: some View {
         let packs = robuxPacksFor(shortfall: (item.price ?? 0) - store.profile.robux)
-        ZStack {
-            Color.black.opacity(0.55).ignoresSafeArea().onTapGesture(perform: close)
-            VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    Text("Buy Robux and item").font(.builder(18, .bold))
-                    Spacer()
-                    Button(action: close) { Icon("x", size: 22) }.accessibilityLabel("Close")
-                }
-                HStack(spacing: 14) {
-                    RemoteImage(url: item.thumb, fill: false).frame(width: 52, height: 52)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(item.name).font(.builder(14.5, .bold)).lineLimit(1)
-                        HStack(spacing: 4) {
-                            Icon("robux", size: 16)
-                            Text(grouped(item.price ?? 0)).font(.builder(14.5, .bold))
-                        }
-                    }
-                }
-                .padding(.top, 18)
-                VStack(spacing: 12) {
-                    ForEach(packs.indices, id: \.self) { i in
-                        Button { pick = i } label: {
-                            HStack(spacing: 6) {
-                                Icon("robux", size: 18)
-                                Text(grouped(packs[i].robux)).font(.builder(17, .bold))
-                                if packs[i].better {
-                                    HStack(spacing: 3) {
-                                        Icon("tag", size: 11)
-                                        Text("Better value").font(.builder(10.5, .medium))
-                                    }
-                                    .padding(.horizontal, 7).frame(height: 20).background(Color.tile, in: Capsule())
+        PopupCard(title: "Buy Robux and item", close: close) {
+            PopupItemLine(name: item.name, price: item.price ?? 0, thumb: item.thumb)
+            VStack(spacing: 12) {
+                ForEach(packs.indices, id: \.self) { i in
+                    Button { pick = i } label: {
+                        HStack(spacing: 6) {
+                            Icon("robux", size: 18)
+                            Text(grouped(packs[i].robux)).font(.builder(17, .bold))
+                            if packs[i].better {
+                                HStack(spacing: 3) {
+                                    Icon("tag", size: 11)
+                                    Text("Better value").font(.builder(10.5, .medium))
                                 }
-                                Spacer()
-                                Text(packs[i].price).font(.builder(16, .bold))
+                                .padding(.horizontal, 7).frame(height: 20).background(Color.tile, in: Capsule())
                             }
-                            .padding(.horizontal, 14).frame(height: 54)
-                            .background(Color.rgb(32, 33, 38), in: RoundedRectangle(cornerRadius: 10))
-                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(i == pick ? Color.white : Color.tile, lineWidth: i == pick ? 2 : 1))
+                            Spacer()
+                            Text(packs[i].price).font(.builder(16, .bold))
                         }
-                        .accessibilityIdentifier("pack-\(packs[i].robux)")
+                        .padding(.horizontal, 14).frame(height: 52)
+                        .background(Color.rgb(32, 33, 38), in: RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(i == pick ? Color.white : Color.tile, lineWidth: i == pick ? 2 : 1))
                     }
+                    .accessibilityIdentifier("pack-\(packs[i].robux)")
                 }
-                .padding(.top, 18)
-                Button {
-                    if packs.indices.contains(pick) { store.profile.topUp(packs[pick].robux) }
-                    close()
-                    buy()
-                } label: {
-                    Text("Buy").font(.builder(16, .bold)).foregroundStyle(.white).frame(maxWidth: .infinity).frame(height: 40)
-                        .background(Color.bloxBlue, in: RoundedRectangle(cornerRadius: 8))
-                }
-                .accessibilityIdentifier("buyRobuxAndItem")
-                .padding(.top, 26)
-                Button(action: plus) {
-                    HStack(spacing: 8) {
-                        Icon("premium", size: 18)
-                        Text("Get 10% off").font(.builder(16, .bold))
-                    }
-                    .frame(maxWidth: .infinity).frame(height: 40).background(Color.tile, in: RoundedRectangle(cornerRadius: 8))
-                }
-                .padding(.top, 10)
-                Text("Nothing is charged: the Robux go to your pretend balance.").font(.builder(10.5)).foregroundStyle(Color.faint)
-                    .multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.top, 12)
             }
-            .foregroundStyle(Color.ink)
-            .padding(18)
-            .frame(width: 321)
-            .background(Color.rgb(25, 26, 31), in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.tile, lineWidth: 1))
+            .padding(.top, 33)
+            Button {
+                if packs.indices.contains(pick) { store.profile.topUp(packs[pick].robux) }
+                close()
+                buy()
+            } label: { popupButton("Buy") }
+            .accessibilityIdentifier("buyRobuxAndItem")
+            .padding(.top, 35)
+            Button(action: plus) {
+                HStack(spacing: 8) {
+                    Icon("roblox-plus", size: 18)
+                    Text("Get 10% off").font(.builder(16, .bold))
+                }
+                .frame(maxWidth: .infinity).frame(height: 35).background(Color.tile, in: RoundedRectangle(cornerRadius: 8))
+            }
+            .padding(.top, 8)
+            popupFootnote("Your payment method will be charged. Roblox Terms of Use apply.")
         }
-        .buttonStyle(PressStyle())
     }
 }
 
