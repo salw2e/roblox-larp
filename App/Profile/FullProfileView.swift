@@ -38,7 +38,7 @@ struct FullProfileView: View {
                             Circle().fill(Color.bg).frame(width: 20, height: 20).overlay(Circle().fill(Color.bloxBlue).frame(width: 14, height: 14)).offset(x: -4, y: -4)
                         }
                     VStack(alignment: .leading, spacing: 4) {
-                        NameLine(profile: p, font: 26)
+                        NameLine(profile: p, font: 27.5)
                         Text("@\(p.shownUsername)").font(.builder(12)).foregroundStyle(Color.faint).lineLimit(1)
                     }
                     .padding(.top, 34)
