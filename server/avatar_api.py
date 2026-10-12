@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import collections, gzip, hashlib, http.server, json, os, re, shutil, sys, threading, time
+import base64, collections, gzip, hashlib, http.server, json, os, re, shutil, struct, sys, threading, time
 import urllib.error, urllib.parse, urllib.request
 import numpy as np
 
@@ -8,6 +8,7 @@ KEY_FILE = os.environ.get("BLOX_KEY_FILE", "key.txt")
 CI_REPO = "salw2e/roblox-larp"
 CACHE = os.environ.get("BLOX_CACHE", "cache")
 PUBLIC = os.environ.get("BLOX_PUBLIC", "")
+RENDER = os.environ.get("BLOX_RENDER", "")       # the renderer in server/render, when it runs beside this
 UA = "Mozilla/5.0"
 csrf = ""
 BUDGET_FILE = os.path.join(CACHE, "budget.json")
@@ -322,6 +323,142 @@ def outfit(base, wear):
         "playerAvatarType": base.get("playerAvatarType", DEFAULT_BODY["playerAvatarType"]),
     }
 
+COMP = {5120: "b", 5121: "B", 5122: "h", 5123: "H", 5125: "I", 5126: "f"}
+WIDTH = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4, "MAT4": 16}
+
+def write_model(glb, folder):
+    magic, _, _ = struct.unpack("<III", glb[:12])
+    assert magic == 0x46546C67, "not a glb"
+    n, _ = struct.unpack("<II", glb[12:20])
+    j = json.loads(glb[20:20 + n])
+    blob = glb[20 + n + 8:]
+
+    def view(i):
+        v = j["bufferViews"][i]
+        return blob[v.get("byteOffset", 0):v.get("byteOffset", 0) + v["byteLength"]], v.get("byteStride")
+
+    def read(i):
+        a = j["accessors"][i]
+        data, stride = view(a["bufferView"])
+        kind, width = np.dtype(COMP[a["componentType"]]), WIDTH[a["type"]]
+        start, size = a.get("byteOffset", 0), kind.itemsize * width
+        if stride and stride != size:
+            rows = [np.frombuffer(data, kind, width, start + r * stride) for r in range(a["count"])]
+            out = np.array(rows)
+        else:
+            out = np.frombuffer(data, kind, a["count"] * width, start).reshape(a["count"], width)
+        if a.get("normalized") and kind.kind in "ui":
+            out = out / np.iinfo(kind).max
+        return out.astype(np.float64) if kind.kind == "f" or a.get("normalized") else out
+
+    def local(node):
+        if "matrix" in node:
+            return np.array(node["matrix"], float).reshape(4, 4).T
+        m = np.eye(4)
+        if "rotation" in node:
+            x, y, z, w = node["rotation"]
+            m[:3, :3] = [[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+                         [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+                         [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]]
+        m[:3, :3] *= np.array(node.get("scale", [1, 1, 1]), float)
+        m[:3, 3] = node.get("translation", [0, 0, 0])
+        return m
+
+    world = {}
+    def walk(i, parent):
+        world[i] = parent @ local(j["nodes"][i])
+        for c in j["nodes"][i].get("children", []):
+            walk(c, world[i])
+    for root in j["scenes"][j.get("scene", 0)]["nodes"]:
+        walk(root, np.eye(4))
+
+    os.makedirs(folder, exist_ok=True)
+    textures = {}
+    def texture(material):
+        t = j["materials"][material].get("pbrMetallicRoughness", {}).get("baseColorTexture")
+        if t is None:
+            return None
+        image = j["textures"][t["index"]]["source"]
+        if image not in textures:
+            textures[image] = f"tex{len(textures)}.png"
+            open(os.path.join(folder, textures[image]), "wb").write(view(j["images"][image]["bufferView"])[0])
+        return textures[image]
+
+    obj, mtl, base, parts = ["mtllib a.mtl"], [], 1, 0
+    for i, node in enumerate(j["nodes"]):
+        if "mesh" not in node or i not in world:
+            continue
+        for prim in j["meshes"][node["mesh"]]["primitives"]:
+            at = prim["attributes"]
+            pos = read(at["POSITION"])[:, :3]
+            ones = np.c_[pos, np.ones(len(pos))]
+            nor = read(at["NORMAL"])[:, :3] if "NORMAL" in at else None
+            if "skin" in node and "JOINTS_0" in at:
+                skin = j["skins"][node["skin"]]
+                inverse = read(skin["inverseBindMatrices"]).reshape(-1, 4, 4).transpose(0, 2, 1)
+                bones = np.array([world[b] @ inverse[k] for k, b in enumerate(skin["joints"])])
+                joints, weights = read(at["JOINTS_0"]).astype(int), read(at["WEIGHTS_0"])
+                weights = weights / np.maximum(weights.sum(1, keepdims=True), 1e-9)
+                each = np.einsum("vk,vkab->vab", weights, bones[joints])
+                pos = np.einsum("vab,vb->va", each, ones)[:, :3]
+                if nor is not None:
+                    nor = np.einsum("vab,vb->va", each[:, :3, :3], nor)
+            else:
+                m = world[i]
+                pos = (ones @ m.T)[:, :3]
+                if nor is not None:
+                    nor = nor @ np.linalg.inv(m[:3, :3])
+            uv = read(at["TEXCOORD_0"])[:, :2] if "TEXCOORD_0" in at else None
+            faces = read(prim["indices"]).reshape(-1, 3) if "indices" in prim else np.arange(len(pos)).reshape(-1, 3)
+            parts += 1
+            name = f"Part{parts}"
+            file = texture(prim["material"]) if "material" in prim else None
+            colour = j["materials"][prim["material"]].get("pbrMetallicRoughness", {}).get("baseColorFactor", [1, 1, 1, 1]) if "material" in prim else [1, 1, 1, 1]
+            mtl += [f"newmtl {name}Mtl", "Ka 1 1 1", "Kd %g %g %g" % tuple(colour[:3]), "Ks 0 0 0", "d 1", "Ns 0"] + ([f"map_Kd {file}"] if file else []) + [""]
+            obj += [f"g {name}", f"usemtl {name}Mtl"]
+            obj += ["v %.5f %.5f %.5f" % tuple(p) for p in pos]
+            if uv is not None:
+                obj += ["vt %.5f %.5f" % (t[0], 1 - t[1]) for t in uv]
+            if nor is not None:
+                nor = nor / np.maximum(np.linalg.norm(nor, axis=1, keepdims=True), 1e-9)
+                obj += ["vn %.4f %.4f %.4f" % tuple(x) for x in nor]
+            def corner(k):
+                k += base
+                return f"{k}/{k if uv is not None else ''}/{k}" if nor is not None else (f"{k}/{k}" if uv is not None else f"{k}")
+            obj += ["f " + " ".join(corner(int(k)) for k in f) for f in faces]
+            base += len(pos)
+    open(os.path.join(folder, "a.obj"), "w").write("\n".join(obj) + "\n")
+    open(os.path.join(folder, "a.mtl"), "w").write("\n".join(mtl) + "\n")
+    return list(textures.values())
+
+def draw_here(definition):
+    if not RENDER or any(a["id"] not in asset_types for a in definition["assets"]):
+        return None
+    job = {"def": {**definition, "assets": [{**a, "type": asset_types[a["id"]]} for a in definition["assets"]]},
+           "glb": True, "png": True, "size": 720, "camera": "default"}
+    try:
+        ask = urllib.request.Request(RENDER + "/draw", data=json.dumps(job).encode(), headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(ask, timeout=170) as r:
+            out = json.loads(r.read())
+        glb = base64.b64decode(out["glb"])
+        picture = base64.b64decode(out["png"].split(",", 1)[1]) if out.get("png") else None
+        key = hashlib.sha1(("own1|" + look_key(definition)).encode()).hexdigest()[:20]
+        folder, tmp = os.path.join(CACHE, key), os.path.join(CACHE, key + ".part")
+        with store_lock:
+            shutil.rmtree(tmp, ignore_errors=True)
+            textures = write_model(glb, tmp)
+            if picture:
+                open(os.path.join(tmp, "pic.png"), "wb").write(picture)
+            open(os.path.join(tmp, "done"), "w").close()
+            shutil.rmtree(folder, ignore_errors=True)
+            os.rename(tmp, folder)
+    except Exception as e:
+        sys.stderr.write(f"own renderer failed: {e!r}\n")
+        return None
+    base = f"{PUBLIC}/file/{key}"
+    return {"image": f"{base}/pic.png" if picture else None,
+            "model": {"obj": f"{base}/a.obj", "mtl": f"{base}/a.mtl", "textures": [f"{base}/{n}" for n in textures], "camera": None, "aabb": None}}
+
 def look_of_outfit(base, wear):
     definition = outfit(base, wear)
     owner = real_looks.get(look_key(definition))
@@ -337,11 +474,21 @@ def look_of_outfit(base, wear):
     kept = drawn.get(key)
     if kept:
         # drawn before: the same outfit again costs nothing
-        folder = os.path.join(CACHE, kept["obj"].split("/")[-2])
+        if "obj" in kept:
+            kept = {"image": None, "model": kept}
+        folder = os.path.join(CACHE, kept["model"]["obj"].split("/")[-2])
         if os.path.exists(os.path.join(folder, "done")):
             os.utime(folder)
-            return {"definition": definition, "image": None, "model": kept}
+            return {"definition": definition, **kept}
         drawn.pop(key, None)
+    mine = draw_here(definition)
+    if mine:
+        # our own drawing: no roblox render, so no hourly limit
+        while len(drawn) > 400:
+            drawn.pop(next(iter(drawn)))
+        drawn[key] = mine
+        remember(DRAWN_FILE, drawn)
+        return {"definition": definition, **mine}
     body = {"thumbnailConfig": {"thumbnailId": 1, "thumbnailType": "3d", "size": "420x420"}, "avatarDefinition": definition}
     with render_lock:
         if budget_now()["left"] is not None and budget_now()["left"] < 2:
@@ -355,7 +502,7 @@ def look_of_outfit(base, wear):
                 model = store_model(r["imageUrl"])
                 while len(drawn) > 400:
                     drawn.pop(next(iter(drawn)))
-                drawn[key] = model
+                drawn[key] = {"image": None, "model": model}
                 remember(DRAWN_FILE, drawn)
                 return {"definition": definition, "image": None, "model": model}
             if r.get("state") != "Pending":
@@ -387,7 +534,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self.reply(200, {"badges": badges_of(int(b.group(1)))})
             except Refused as e:
                 return self.reply(422, {"error": str(e)})
-        m = re.fullmatch(r"/file/([0-9a-f]{20})/(a\.obj|a\.mtl|tex\d{1,2}\.png)", self.path)
+        m = re.fullmatch(r"/file/([0-9a-f]{20})/(a\.obj|a\.mtl|pic\.png|tex\d{1,2}\.png)", self.path)
         path = m and os.path.join(CACHE, m.group(1), m.group(2))
         if not path or not os.path.isfile(path):
             return self.reply(404, {"error": "not found"})
@@ -541,8 +688,14 @@ def demo():
     assert [a["id"] for a in kept["assets"]] == [1080951, 1142116], kept["assets"]
     d = outfit(user["definition"], [{"id": 1028606}, {"id": 144076760}, {"id": 144076760}])
     assert [a["id"] for a in d["assets"]] == [1028606, 144076760] and d["bodyColors"] == user["definition"]["bodyColors"]
-    worn = look_of_outfit(user["definition"], [{"id": 215718515}, {"id": 1028606}]) if os.environ.get("DEMO_RENDER") else user
-    if os.environ.get("DEMO_RENDER"):
+    spent = budget_now()["left"]
+    worn = look_of_outfit(user["definition"], [{"id": 215718515}, {"id": 1028606}]) if os.environ.get("DEMO_RENDER") or RENDER else user
+    if RENDER:
+        own = os.path.join(CACHE, worn["model"]["obj"].split("/")[-2])
+        assert worn["image"].endswith("/pic.png") and os.path.getsize(os.path.join(own, "pic.png")) > 5000, worn      # our renderer drew it
+        assert budget_now()["left"] == spent, "drawing it ourselves must not use a roblox render"
+        assert len(worn["model"]["textures"]) > 3 and open(os.path.join(own, "a.obj")).read().count("\ng Part") > 5
+    if os.environ.get("DEMO_RENDER") or RENDER:
         spent = budget_now()["left"]
         again = look_of_outfit(user["definition"], [{"id": 215718515}, {"id": 1028606}])
         assert again["model"] == worn["model"] and budget_now()["left"] == spent, "the same outfit twice must not be drawn twice"
@@ -551,7 +704,7 @@ def demo():
     assert obj.count("\nv ") > 500 and "mtllib a.mtl" in obj
     assert "map_Kd tex0.png" in open(os.path.join(CACHE, key, "a.mtl")).read()
     assert all(os.path.isfile(os.path.join(CACHE, key, t.split("/")[-1])) for t in worn["model"]["textures"])
-    assert worn["model"]["camera"]["fov"] > 0
+    assert RENDER or worn["model"]["camera"]["fov"] > 0
     seen = []
     globals()["fetch_model"] = lambda d, folder, names: seen.append(folder)
     globals()["download"] = lambda url: json.dumps(shape).encode()
@@ -564,11 +717,14 @@ def demo():
     note_budget({"x-ratelimit-remaining": "0", "x-ratelimit-reset": "900"})
     assert budget_now() == {"left": 0, "resetIn": 900} or budget_now()["resetIn"] == 899
     assert json.load(open(BUDGET_FILE))["left"] == 0                                 # a restart would still know
+    ours, globals()["RENDER"] = RENDER, ""                                           # without our own renderer
+    drawn.pop(look_key(outfit(None, [])), None)
     try:
         look_of_outfit(None, [])
         raise AssertionError("an empty budget must refuse before asking Roblox")
     except Busy as e:
         assert "15 min" in str(e), str(e)
+    globals()["RENDER"] = ours
     budget.update(saved)
     remember(BUDGET_FILE, budget)
     try:
