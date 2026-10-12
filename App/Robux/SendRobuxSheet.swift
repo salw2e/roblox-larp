@@ -106,7 +106,7 @@ struct SendRobuxSheet: View {
                     fact("two-people", "0 mutual Connections")
                 }
                 .padding(.top, 16)
-                if let joined { fact("moon", "Joined in \(joined)").padding(.top, 10) }
+                if let joined { fact("circle-i", "Joined in \(joined)").padding(.top, 10) }
             }
             .frame(maxWidth: .infinity).padding(.vertical, 22)
             .background(panel, in: RoundedRectangle(cornerRadius: 8))
