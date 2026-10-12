@@ -2,7 +2,7 @@ name: build
 on:
   push:
     branches: [main]
-    paths-ignore: ["README.md", "shots/**"]
+    paths-ignore: ["README.md", "shots/**", "server/**"]
   workflow_dispatch:
     inputs:
       redraw:
