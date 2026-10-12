@@ -6,6 +6,7 @@ struct AppearanceView: View {
     @Environment(\.scenePhase) private var phase
     var active = true
     var openMenu: () -> Void = {}
+    var hideBar: (Bool) -> Void = { _ in }
     var open: (Page) -> Void = { _ in }
 
     @State private var customize = false
@@ -14,6 +15,7 @@ struct AppearanceView: View {
     @State private var category = "All"
     @State private var sub: String?
     @State private var sort = Sort.relevance
+    @State private var refine: String?
     @State private var results: [Item] = []
     @State private var styles: [Item] = []
     @State private var next: String?
@@ -35,7 +37,10 @@ struct AppearanceView: View {
     @State private var renaming: Outfit?
     @GestureState private var pull: CGFloat = 0
     @FocusState private var typing: Bool
-    private let restTop: CGFloat = 316, raisedTop: CGFloat = 48
+    private let raisedTop: CGFloat = 48
+    private var hunting: Bool { searching && !customize }
+    private var restTop: CGFloat { hunting ? 278 : 316 }
+    private static let refinements = ["black", "white", "red", "blue", "pink", "green", "purple", "orange", "yellow", "brown"]
 
     enum Sort: String, CaseIterable { case relevance = "Relevance", low = "Price: low to high", high = "Price: high to low" }
 
@@ -86,6 +91,7 @@ struct AppearanceView: View {
         } message: { Text(priceProblem) }
         .buying($buying, open: open) { it in if store.trial?.key == it.key { store.keepTrial() } }
         .onChange(of: active) { _, on in if !on { store.tryOn(nil) } }
+        .onChange(of: hunting) { _, on in hideBar(on) }
     }
 
     private var stage: some View {
@@ -109,7 +115,7 @@ struct AppearanceView: View {
             .padding(.leading, 20).padding(.bottom, 33)
         }
         .foregroundStyle(Color.ink)
-        .frame(height: 332)
+        .frame(height: restTop + 16)
     }
 
     private var drawingStatus: some View {
@@ -129,7 +135,8 @@ struct AppearanceView: View {
     }
 
     private var topControls: some View {
-        VStack(spacing: 13) {
+        VStack(spacing: hunting ? 30 : 13) {
+            if hunting { searchRow } else {
             HStack(spacing: 0) {
                 Button(action: openMenu) {
                     Icon("three-bars-horizontal", size: 25)
@@ -143,6 +150,7 @@ struct AppearanceView: View {
             .frame(height: 28)
             .overlay(tabs)
             .padding(.trailing, 3)
+            }
             HStack(alignment: .top) {
                 VStack(spacing: 13) {
                     Button { open(.profile) } label: { Headshot(image: store.avatar, crop: store.profile.crop, size: 36) }
@@ -163,7 +171,26 @@ struct AppearanceView: View {
                 .accessibilityIdentifier("robuxPill")
             }
         }
-        .padding(.horizontal, 20).padding(.top, 6)
+        .padding(.horizontal, 20).padding(.top, hunting ? -20 : 6)
+    }
+
+    private var searchRow: some View {
+        HStack(spacing: 12) {
+            Icon("magnifying-glass", size: 22).foregroundStyle(Color.faint)
+            TextField("Search", text: $query).submitLabel(.search).focused($typing)
+                .autocorrectionDisabled()
+                .onSubmit { refine = nil; Task { await load() } }
+                .accessibilityIdentifier("catalogSearch")
+            if !query.isEmpty {
+                Button { query = ""; refine = nil; typing = true; Task { await load() } } label: {
+                    Image(systemName: "xmark.circle").font(.system(size: 17)).foregroundStyle(Color.faint)
+                }
+                .accessibilityLabel("Clear search")
+            }
+            Button("Cancel", action: toggleSearch).foregroundStyle(Color.faint)
+                .accessibilityIdentifier("searchToggle")
+        }
+        .font(.builder(16)).frame(height: 28)
     }
 
     private var tabs: some View {
@@ -192,8 +219,8 @@ struct AppearanceView: View {
                     .onTapGesture { withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) { raised.toggle() } }
                     .accessibilityIdentifier("sheetHandle").accessibilityLabel(raised ? "Lower the list" : "Raise the list")
                     .accessibilityAddTraits(.isButton)
-                if searching && !customize { searchBar }
                 if customize { shelfTabs } else { categoryTabs; subTabs }
+                if hunting && !query.isEmpty { refineChips }
             }
             .simultaneousGesture(sheetDrag)
             ScrollView {
@@ -280,21 +307,30 @@ struct AppearanceView: View {
         }
     }
 
-    private var searchBar: some View {
-        HStack {
-            Icon("magnifying-glass", size: 18).foregroundStyle(Color.faint)
-            TextField("Search the Marketplace", text: $query).submitLabel(.search).focused($typing)
-                .autocorrectionDisabled()
-                .onSubmit { Task { await load() } }
-                .accessibilityIdentifier("catalogSearch")
-            if !query.isEmpty {
-                Button { query = ""; Task { await load() } } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Color.faint) }
-                    .accessibilityLabel("Clear search")
+    private var refineChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Self.refinements, id: \.self) { word in
+                    Button {
+                        refine = refine == word ? nil : word
+                        Task { await load() }
+                    } label: {
+                        Text(word).font(.builder(13.5)).padding(.horizontal, 11).frame(height: 26)
+                            .foregroundStyle(refine == word ? Color.bg : Color.faint)
+                            .background(refine == word ? Color.ink : Color.tile, in: RoundedRectangle(cornerRadius: 8))
+                    }
+                    .accessibilityIdentifier("refine-\(word)")
+                }
             }
         }
-        .font(.builder(16)).padding(.horizontal, 12).frame(height: 40)
-        .background(Color.field, in: RoundedRectangle(cornerRadius: 10))
-        .padding(.horizontal, 15).padding(.bottom, 10)
+        .contentMargins(.horizontal, 15)
+        .padding(.top, 10).padding(.bottom, 4)
+    }
+
+    private var searchText: String {
+        let typed = query.trimmingCharacters(in: .whitespaces)
+        guard hunting, !typed.isEmpty, let refine else { return typed }
+        return typed + " " + refine
     }
 
     private var sorted: [Item] {
@@ -310,8 +346,12 @@ struct AppearanceView: View {
         let assets = sorted.filter { !$0.bundle }
         return VStack(alignment: .leading, spacing: 0) {
             if category == "Backgrounds" && query.isEmpty { plusBanner.padding(.top, 10) }
-            Text(front ? "Recommended For You" : query.isEmpty ? category : "Results").font(.builder(20, .bold))
-                .frame(height: 24).padding(.top, 10.5).padding(.bottom, 12)
+            if hunting && !query.isEmpty {
+                Color.clear.frame(height: 12)
+            } else {
+                Text(front ? "Recommended For You" : query.isEmpty ? category : "Results").font(.builder(20, .bold))
+                    .frame(height: 24).padding(.top, 10.5).padding(.bottom, 12)
+            }
             if loading && results.isEmpty { ProgressView().tint(Color.faint).frame(maxWidth: .infinity).padding(.bottom, 12) }
             if let failure { Text(failure).font(.builder(14.5)).foregroundStyle(Color.faint).padding(.bottom, 12).accessibilityIdentifier("catalogFailure") }
             LazyVGrid(columns: grid, spacing: 20) {
@@ -365,7 +405,11 @@ struct AppearanceView: View {
     private func catalogTile(_ item: Item) -> some View {
         let trying = store.trial?.key == item.key
         return Button {
-            if trying || store.profile.owns(item) != nil { open(.item(item)) } else { store.tryOn(item) }
+            if trying || store.profile.owns(item) != nil { open(.item(item)) } else {
+                store.tryOn(item)
+                typing = false
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) { raised = false }      // down, so the avatar wearing it shows
+            }
         } label: {
             tile(item, showCreator: true)
                 .overlay(alignment: .top) {
@@ -672,16 +716,20 @@ struct AppearanceView: View {
         withAnimation { searching.toggle() }
         if searching {
             typing = true
-        } else if !query.isEmpty {
-            query = ""
-            Task { await load() }
+        } else {
+            typing = false
+            refine = nil
+            if !query.isEmpty {
+                query = ""
+                Task { await load() }
+            }
         }
     }
 
     private func load() async {
         asked += 1
         let mine = asked
-        let q = query.trimmingCharacters(in: .whitespaces), taxonomy = self.taxonomy
+        let q = searchText, taxonomy = self.taxonomy
         loading = true
         failure = nil
         for (attempt, pause) in [0, 2, 5].enumerated() {
@@ -710,7 +758,7 @@ struct AppearanceView: View {
         let mine = asked
         loading = true
         defer { loading = false }
-        guard let page = try? await Roblox.search(query.trimmingCharacters(in: .whitespaces), category: taxonomy, cursor: cursor),
+        guard let page = try? await Roblox.search(searchText, category: taxonomy, cursor: cursor),
               mine == asked else { return }
         results += page.items.filter { new in !results.contains { $0.same(new) } }
         next = page.next
