@@ -57,6 +57,7 @@ struct RobuxPage: View {
             Text(buying.map { "\(grouped($0.robux)) Robux for \($0.price). Nothing is charged: this adds them to your pretend balance." } ?? "")
         }
         .sheet(isPresented: $sending) { SendRobuxSheet() }
+        .overlay { ToastBar() }
         .alert(plan.map { "Subscribe to \($0.name)" } ?? "", isPresented: Binding(get: { plan != nil }, set: { if !$0 { plan = nil } })) {
             Button("Subscribe") {
                 if let plan {
