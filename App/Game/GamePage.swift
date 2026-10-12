@@ -91,7 +91,7 @@ struct GamePage: View {
         )
         .overlay {
             if let p = pass {
-                BuyItemCard(name: p.name, price: p.price ?? 0, thumb: nil, close: { pass = nil }) {
+                BuyItemCard(name: p.name, price: p.price ?? 0, thumb: nil, close: { pass = nil }) { _ in
                     if !store.profile.send(p.price ?? 0) { notEnough = true }
                 }
                 .transition(.opacity)
