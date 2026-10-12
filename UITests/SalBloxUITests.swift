@@ -173,6 +173,10 @@ final class SalBloxUITests: XCTestCase {
         app.buttons["sendToAnyone"].firstMatch.tap()
         XCTAssertTrue(app.buttons["sendPreset-200"].waitForExistence(timeout: 5), "picking someone opens the amount screen")
         app.buttons["sendPreset-200"].tap()
+        let much = app.textFields["sendAmount"]
+        much.tap()
+        much.typeText("0")
+        XCTAssertEqual(much.value as? String, "2,000", "the amount groups its thousands as you type")
         app.buttons["sendPreset-25"].tap()
         sleep(1)
         shot("10b2c send robux amount")
