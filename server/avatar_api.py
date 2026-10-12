@@ -62,6 +62,10 @@ def budget_now():
         budget["left"] = None
     return {"left": budget["left"], "resetIn": max(0, int(budget["reset_at"] - time.time())) if budget["left"] is not None else 0}
 
+def budget_told():
+    # what the app hears: with our own renderer beside us there is nothing for it to wait for
+    return {"left": None, "resetIn": 0} if RENDER else budget_now()
+
 SINGLE = {2, 11, 12, 17, 18, 27, 28, 29, 30, 31, 76, 77, 78, 79} | set(range(48, 57))
 LAYERED = set(range(64, 73))
 ACCESSORY = {8, 41, 42, 43, 44, 45, 46, 47}
@@ -521,7 +525,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/budget":
-            return self.reply(200, budget_now())
+            return self.reply(200, budget_told())
         g = re.fullmatch(r"/game/(\d{1,15})", self.path)
         if g:
             try:
@@ -564,11 +568,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not isinstance(wear, list) or len(wear) > 60:
                     raise Refused("Too many items.")
                 out = look_of_outfit(q.get("base"), wear)
-            self.reply(200, {**out, "budget": budget_now()})
+            self.reply(200, {**out, "budget": budget_told()})
         except Refused as e:
             what = q.get("user") if isinstance(q, dict) and q.get("user") else [w.get("id") for w in (q.get("wear") or [])] if isinstance(q, dict) else "?"
             sys.stderr.write(f"look refused: {e} | {what}\n")
-            self.reply(422, {"error": str(e), "budget": budget_now()})
+            self.reply(422, {"error": str(e), "budget": budget_told()})
         except Exception as e:
             sys.stderr.write(f"look failed: {e!r}\n")
             self.reply(500, {"error": "The avatar service hit a problem. Try again."})
