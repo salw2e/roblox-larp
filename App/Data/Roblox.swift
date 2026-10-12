@@ -77,6 +77,13 @@ enum Roblox {
         return Friend(id: u.id, name: u.name, displayName: u.displayName, headshot: await headshots([u.id])[u.id])
     }
 
+    static func people(_ keyword: String) async -> [Friend] {
+        guard let data = try? await fetch(url("https://users.roblox.com/v1/users/search", ["keyword": keyword, "limit": "10"])) else { return [] }
+        let users = Parse.users(data)
+        let faces = await headshots(users.map(\.id))
+        return users.map { Friend(id: $0.id, name: $0.name, displayName: $0.displayName, headshot: faces[$0.id]) }
+    }
+
     static func headshots(_ ids: [Int64]) async -> [Int64: String] {
         guard !ids.isEmpty else { return [:] }
         return await pictures("https://thumbnails.roblox.com/v1/users/avatar-headshot", ["userIds": list(ids), "size": "150x150", "format": "Png"])
