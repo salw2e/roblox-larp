@@ -407,6 +407,7 @@ final class SalBloxUITests: XCTestCase {
     private func buyOnPage() {
         app.buttons["buyButton"].tap()
         if app.buttons["buyItemConfirm"].waitForExistence(timeout: 3) {
+            XCTAssertEqual(app.buttons["wearAfter"].value as? String, "on", "wear after purchase starts ticked")
             shot("15c2 buy item card")
             app.buttons["buyItemConfirm"].tap()
         } else if app.buttons["buyRobuxAndItem"].waitForExistence(timeout: 2) {

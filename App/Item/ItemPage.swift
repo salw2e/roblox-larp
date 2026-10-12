@@ -133,7 +133,7 @@ struct ItemPage: View {
                 } else if let price = shown.price {
                     Button { buying = shown } label: {
                         HStack(spacing: 6) {
-                            if price == 0 { Text("Get").font(.builder(16, .bold)) } else {
+                            if price == 0 { Text("Free").font(.builder(16, .bold)) } else {
                                 Icon("robux", size: 20)
                                 Text(grouped(price)).font(.builder(16, .bold))
                             }

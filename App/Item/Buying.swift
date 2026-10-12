@@ -14,17 +14,17 @@ struct Buying: ViewModifier {
             .onChange(of: item) { _, new in
                 guard let new, let price = new.price else { return }
                 item = nil
-                if price == 0 { finish(new) } else if price <= store.profile.robux { confirm = new } else { short = new }
+                if price <= store.profile.robux { confirm = new } else { short = new }       // free ones ask too, like the real app
             }
             .overlay {
                 if let it = confirm {
-                    BuyItemCard(name: it.name, price: it.price ?? 0, thumb: it.thumb, close: { confirm = nil }) { finish(it) }
+                    BuyItemCard(name: it.name, price: it.price ?? 0, thumb: it.thumb, close: { confirm = nil }) { wear in finish(it, wear: wear) }
                         .transition(.opacity)
                 }
             }
             .overlay {
                 if let it = short {
-                    BuyRobuxAndItem(item: it, close: { short = nil }, plus: { short = nil; open(.robux) }) { finish(it) }
+                    BuyRobuxAndItem(item: it, close: { short = nil }, plus: { short = nil; open(.robux) }) { finish(it, wear: true) }
                         .transition(.opacity)
                 }
             }
@@ -32,8 +32,14 @@ struct Buying: ViewModifier {
             .animation(.easeOut(duration: 0.18), value: confirm?.key)
     }
 
-    private func finish(_ it: Item) {
-        if store.profile.buy(it) == .bought { bought(it) }
+    private func finish(_ it: Item, wear: Bool) {
+        guard store.profile.buy(it) == .bought else { return }
+        if wear {
+            if store.trial?.key != it.key { store.wear(it, true) }
+            bought(it)
+        } else if store.trial?.key == it.key {
+            store.tryOn(nil)        // bought but left off
+        }
     }
 }
 
@@ -75,22 +81,23 @@ struct PopupItemLine: View {
     let price: Int
     let thumb: String?
     var body: some View {
-        HStack(spacing: 16) {
-            if let thumb { RemoteImage(url: thumb, fill: false).frame(width: 38, height: 38) }
-            VStack(alignment: .leading, spacing: 6) {
-                Text(name).font(.builder(14.5, .bold)).lineLimit(1)
-                HStack(spacing: 4) {
+        HStack(alignment: .top, spacing: 15) {
+            if let thumb { RemoteImage(url: thumb, fill: false).frame(width: 44, height: 44).padding(.top, 2) }
+            VStack(alignment: .leading, spacing: 9) {
+                Text(name).font(.builder(15.5, .bold)).lineLimit(1)
+                Text("Permanent").font(.builder(12.5, .bold)).foregroundStyle(Color.faint)
+                HStack(spacing: 5) {
                     Icon("robux", size: 16)
                     Text(grouped(price)).font(.builder(14.5, .bold))
                 }
             }
         }
-        .padding(.leading, thumb == nil ? 0 : 19).padding(.top, 22)
+        .padding(.leading, thumb == nil ? 0 : 13).padding(.top, 20)
     }
 }
 
 private func popupButton(_ text: String) -> some View {
-    Text(text).font(.builder(16, .bold)).foregroundStyle(.white).frame(maxWidth: .infinity).frame(height: 35)
+    Text(text).font(.builder(16, .bold)).foregroundStyle(.white).frame(maxWidth: .infinity).frame(height: 36)
         .background(Color.bloxBlue, in: RoundedRectangle(cornerRadius: 8))
 }
 
@@ -99,26 +106,35 @@ private func popupFootnote(_ text: String) -> some View {
 }
 
 struct BuyItemCard: View {
-    @EnvironmentObject var store: Store
     let name: String
     let price: Int
     let thumb: String?
     let close: () -> Void
-    let buy: () -> Void
+    let buy: (_ wear: Bool) -> Void
+    @State private var wear = true
 
     var body: some View {
         PopupCard(title: "Buy item", close: close) {
             PopupItemLine(name: name, price: price, thumb: thumb)
-            Text("Your balance after this purchase will be \(grouped(store.profile.robux - price)) Robux.")
-                .font(.builder(13.5)).foregroundStyle(Color.faint).fixedSize(horizontal: false, vertical: true).padding(.top, 22)
-                .accessibilityIdentifier("balanceAfter")
+            Button { wear.toggle() } label: {
+                HStack(spacing: 11) {
+                    RoundedRectangle(cornerRadius: 3).fill(wear ? Color.white : .clear)
+                        .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.white, lineWidth: 1.5))
+                        .overlay { if wear { Image(systemName: "checkmark").font(.system(size: 9, weight: .heavy)).foregroundStyle(Color.bg) } }
+                        .frame(width: 14, height: 14)
+                    Text("Wear item after purchase").font(.builder(14))
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .accessibilityIdentifier("wearAfter").accessibilityValue(wear ? "on" : "off")
+            .padding(.top, 24)
             Button {
                 close()
-                buy()
+                buy(wear)
             } label: { popupButton("Buy") }
             .accessibilityIdentifier("buyItemConfirm")
-            .padding(.top, 26)
-            popupFootnote("Roblox Terms of Use apply.")
+            .padding(.top, 19)
         }
     }
 }
