@@ -89,7 +89,10 @@ struct SendRobuxSheet: View {
                 .accessibilityIdentifier("sendingTo")
             HStack(spacing: 8) {
                 Icon("robux", size: 30)
-                TextField("0", text: $amount).keyboardType(.numberPad).font(.builder(44, .bold)).fixedSize()
+                TextField("0", text: Binding(get: { amount }, set: { typed in
+                    let n = number(from: String(digits(in: typed).prefix(9)))
+                    amount = n == 0 ? "" : grouped(n)                    // 2000 reads 2,000 while you type
+                })).keyboardType(.numberPad).font(.builder(44, .bold)).fixedSize()
                     .disabled(reviewing)
                     .accessibilityIdentifier("sendAmount")
             }
