@@ -77,6 +77,12 @@ enum Roblox {
         return Friend(id: u.id, name: u.name, displayName: u.displayName, headshot: await headshots([u.id])[u.id])
     }
 
+    static func suggest(_ prefix: String) async -> [String] {
+        guard let data = try? await fetch(url("https://apis.roblox.com/autocomplete-avatar/v2/suggest", ["prefix": prefix, "limit": "8", "lang": "en"])),
+              let d = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any], let rows = d["Data"] as? [[String: Any]] else { return [] }
+        return rows.compactMap { $0["Query"] as? String }
+    }
+
     static func people(_ keyword: String) async -> [Friend] {
         guard let data = try? await fetch(url("https://users.roblox.com/v1/users/search", ["keyword": keyword, "limit": "10"])) else { return [] }
         let users = Parse.users(data)
