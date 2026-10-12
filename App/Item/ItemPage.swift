@@ -131,7 +131,11 @@ struct ItemPage: View {
                     }
                     .accessibilityIdentifier("wearButton")
                 } else if let price = shown.price {
-                    Button { buying = shown } label: {
+                    Button {
+                        var it = shown
+                        it.thumb = it.thumb ?? item.thumb ?? sharp        // the fuller copy from roblox comes without its picture
+                        buying = it
+                    } label: {
                         HStack(spacing: 6) {
                             if price == 0 { Text("Free").font(.builder(16, .bold)) } else {
                                 Icon("robux", size: 20)
