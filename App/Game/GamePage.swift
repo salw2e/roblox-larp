@@ -89,10 +89,15 @@ struct GamePage: View {
                 },
             including: .gesture
         )
-        .alert(pass.map { "Buy \($0.name)" } ?? "", isPresented: Binding(get: { pass != nil }, set: { if !$0 { pass = nil } }), presenting: pass) { p in
-            Button("Buy Now") { if !store.profile.send(p.price ?? 0) { notEnough = true } }
-            Button("Cancel", role: .cancel) {}
-        } message: { p in Text("Buy \(p.name) for \(grouped(p.price ?? 0)) Robux?") }
+        .overlay {
+            if let p = pass {
+                BuyItemCard(name: p.name, price: p.price ?? 0, thumb: nil, close: { pass = nil }) {
+                    if !store.profile.send(p.price ?? 0) { notEnough = true }
+                }
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.18), value: pass?.id)
         .alert("Not enough Robux", isPresented: $notEnough) {
             Button("OK", role: .cancel) {}
         } message: { Text("Get more on the Buy Robux page.") }

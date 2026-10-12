@@ -170,14 +170,24 @@ final class SalBloxUITests: XCTestCase {
         type("builderman", into: app.textFields["sendSearch"])
         XCTAssertTrue(app.buttons["sendToAnyone"].firstMatch.waitForExistence(timeout: 25), "the search finds people who are not friends")
         shot("10b2b send robux anyone")
-        app.buttons["sendClose"].tap()
+        app.buttons["sendToAnyone"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["sendPreset-200"].waitForExistence(timeout: 5), "picking someone opens the amount screen")
+        app.buttons["sendPreset-200"].tap()
+        app.buttons["sendPreset-25"].tap()
+        sleep(1)
+        shot("10b2c send robux amount")
+        app.buttons["sendNext"].tap()
+        XCTAssertEqual(app.buttons["sendNext"].label, "Send")
+        shot("10b2d send robux review")
+        app.buttons["sendNext"].tap()
         XCTAssertTrue(app.staticTexts["sendBalance"].waitForNonExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["robuxBalance"].label, "55,863")
         reveal(app.buttons["plan-0"])
         shot("10b3 new on roblox")
         app.buttons["plan-0"].tap()
         XCTAssertTrue(app.alerts["Subscribe to Roblox Plus"].waitForExistence(timeout: 3))
         app.alerts.buttons["Cancel"].tap()
-        XCTAssertEqual(app.staticTexts["robuxBalance"].label, "55,888")
+        XCTAssertEqual(app.staticTexts["robuxBalance"].label, "55,863")
         reveal(app.buttons["faq-2"])
         shot("10b4 faq")
         reveal(app.buttons["myTransactions"])
@@ -210,7 +220,7 @@ final class SalBloxUITests: XCTestCase {
 
         app.buttons["menuButton"].tap()
         XCTAssertTrue(app.staticTexts["menuRobux"].waitForExistence(timeout: 5))
-        XCTAssertEqual(app.staticTexts["menuRobux"].label, "55,888")
+        XCTAssertEqual(app.staticTexts["menuRobux"].label, "55,863")
         shot("12 menu")
         app.buttons["menu-Trades"].tap()
         XCTAssertTrue(app.buttons["tradeRow"].firstMatch.waitForExistence(timeout: 5))
@@ -387,8 +397,9 @@ final class SalBloxUITests: XCTestCase {
 
     private func buyOnPage() {
         app.buttons["buyButton"].tap()
-        if app.alerts.buttons["Buy Now"].waitForExistence(timeout: 3) {
-            app.alerts.buttons["Buy Now"].tap()
+        if app.buttons["buyItemConfirm"].waitForExistence(timeout: 3) {
+            shot("15c2 buy item card")
+            app.buttons["buyItemConfirm"].tap()
         } else if app.buttons["buyRobuxAndItem"].waitForExistence(timeout: 2) {
             shot("15d buy robux and item")
             app.buttons["buyRobuxAndItem"].tap()
