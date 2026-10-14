@@ -1,35 +1,35 @@
 # roblox-larp
 
-roblox look-alike for iphone. fake profile, robux, avatar, marketplace, the lot. just for fun, not affiliated with roblox.
+Roblox look-alike for iPhone with a fake profile, Robux, avatar editor and marketplace. A fan project, not affiliated with Roblox.
 
-## build
+## Build
 
-swiftui, built unsigned on github actions, installed with sideloadly.
+SwiftUI app, built unsigned on GitHub Actions and installed with Sideloadly.
 
 ```
 cd Packages/SalBloxKit && swift test
 ```
 
-`server/` is the small avatar service the app talks to.
+`server/` is the small avatar service the app uses.
 
-## the app
+## The app
 
 <picture>
   <source media="(min-width: 768px)" srcset="shots/main-row.webp">
   <img src="shots/main-grid.webp" width="100%" alt="menu, buy robux">
 </picture>
 
-## the editor
+## The editor
 
 <picture>
   <source media="(min-width: 768px)" srcset="shots/edit-row.webp">
   <img src="shots/edit-grid.webp" width="100%" alt="edit profile, skin">
 </picture>
 
-## disclaimer
+## Disclaimer
 
-not affiliated with roblox. roblox, its name, logo, fonts and icons belong to roblox corporation. this is a fan project, it's free and makes no money.
+Not affiliated with Roblox. The Roblox name, logo, fonts and icons belong to Roblox Corporation. This is a free fan project and makes no money.
 
-if you're from roblox and want something changed or taken down, open an issue and it'll be done.
+If you represent Roblox and want something changed or removed, open an issue.
 
-the code is MIT. that doesn't cover anything that belongs to roblox.
+The code is MIT licensed. That does not cover anything that belongs to Roblox.
