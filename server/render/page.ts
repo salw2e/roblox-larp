@@ -2,7 +2,9 @@ import { FLAGS, RBXRenderer, Outfit, Authentication, generateOutfitThumbnail, As
 
 const via = (u: string) => (u.startsWith("http") ? "/rbx?u=" + encodeURIComponent(u) : u);
 
-FLAGS.ONLINE_ASSETS = true;
+FLAGS.ONLINE_ASSETS = false;
+FLAGS.ASSETS_PATH = "/rbxasset/";
+FLAGS.RIG_PATH = "/rig/";
 FLAGS.USE_WORKERS = false;
 FLAGS.ASSETDELIVERY_V2 = false;
 FLAGS.FETCH_FUNC = (input, init) => {

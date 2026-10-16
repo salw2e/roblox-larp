@@ -24,8 +24,13 @@ store_lock = threading.Lock()
 calls = collections.deque()
 CALLS_PER_HOUR = 60
 
+dead_cookie = None
+
 def cookie():
-    return open(COOKIE_FILE).read().strip()
+    try:
+        return open(COOKIE_FILE).read().strip() if os.path.getmtime(COOKIE_FILE) != dead_cookie else ""
+    except OSError:
+        return ""
 
 def remember(path, value):
     tmp = path + ".tmp"
@@ -86,11 +91,20 @@ class Busy(Refused):
 def render_wait():
     return f"Roblox only draws a few new outfits an hour. Try again in about {max(1, round(budget_now()['resetIn'] / 60))} min."
 
+def keep_login(headers):
+    # roblox swaps the login for a new one now and then; keeping the new one is what stops it expiring
+    for c in headers.get_all("Set-Cookie") or []:
+        m = re.match(r"\.ROBLOSECURITY=([^;]+)", c)
+        if m and m.group(1) != cookie():
+            open(COOKIE_FILE + ".new", "w").write(m.group(1))
+            os.replace(COOKIE_FILE + ".new", COOKIE_FILE)
+            sys.stderr.write("roblox gave a new login, kept it\n")
+
 def rbx(url, body=None, login=True):
-    global csrf
-    for attempt in range(2):
+    global csrf, dead_cookie
+    for attempt in range(3):
         headers = {"User-Agent": UA, "Accept": "application/json"}
-        if login:
+        if login and cookie():
             headers["Cookie"] = ".ROBLOSECURITY=" + cookie()
         data = None
         if body is not None:
@@ -99,6 +113,8 @@ def rbx(url, body=None, login=True):
             headers["x-csrf-token"] = csrf
         try:
             with urllib.request.urlopen(urllib.request.Request(url, data=data, headers=headers), timeout=25) as r:
+                if "Cookie" in headers:
+                    keep_login(r.headers)
                 if "/avatar/render" in url:
                     note_budget(r.headers)
                 return json.loads(r.read())
@@ -106,11 +122,16 @@ def rbx(url, body=None, login=True):
             if "/avatar/render" in url:
                 note_budget(e.headers)
             token = e.headers.get("x-csrf-token")
-            if e.code == 403 and token and attempt == 0:
+            if e.code == 403 and token and attempt < 2:
                 csrf = token
                 continue
+            if e.code == 401 and "Cookie" in headers:
+                # a logged-out cookie is refused where no cookie at all is fine, so stop sending it
+                dead_cookie = os.path.getmtime(COOKIE_FILE)
+                sys.stderr.write("roblox login expired, going on without it\n")
+                continue
             if e.code == 401:
-                raise Refused("The Roblox login on the server has expired. Sal needs to send a new cookie.")
+                raise Refused("Roblox only shows this when logged in.")
             if e.code == 429:
                 raise Busy(render_wait() if "/avatar/render" in url else "Roblox is busy (too many requests). Try again in a minute.")
             detail = e.read().decode("utf-8", "replace")[:300]
@@ -251,7 +272,8 @@ def look_of_user(username):
         "scales": a.get("scales", DEFAULT_BODY["scales"]),
         "playerAvatarType": {"playerAvatarType": a.get("playerAvatarType", "R15")},
     }
-    model = store_model(wait_for(lambda: rbx(f"https://thumbnails.roblox.com/v1/users/avatar-3d?userId={uid}")))
+    mine = draw_here(definition)
+    model = mine["model"] if mine else store_model(wait_for(lambda: rbx(f"https://thumbnails.roblox.com/v1/users/avatar-3d?userId={uid}")))
     image = wait_for(lambda: rbx(f"https://thumbnails.roblox.com/v1/users/avatar?userIds={uid}&size=720x720&format=Png", login=False))
     while len(real_looks) > 300:
         real_looks.pop(next(iter(real_looks)))
@@ -613,8 +635,11 @@ def game_extras(universe):
     when, found = extras_cache.get(universe, (0, None))
     if found is not None and time.time() - when < 600:
         return found
-    links = rbx(f"https://games.roblox.com/v1/games/{universe}/social-links/list")
-    voice = rbx(f"https://voice.roblox.com/v1/settings/universe/{universe}")
+    try:
+        links = rbx(f"https://games.roblox.com/v1/games/{universe}/social-links/list")
+        voice = rbx(f"https://voice.roblox.com/v1/settings/universe/{universe}")
+    except Refused:
+        links, voice = {}, {}           # roblox only shows these to a logged-in user
     found = {"social": [{"type": x.get("type", ""), "url": x.get("url", ""), "title": x.get("title", "")} for x in links.get("data", [])],
              "voice": bool(voice.get("isUniverseEnabledForVoice")), "camera": bool(voice.get("isUniverseEnabledForAvatarVideo"))}
     extras_cache[universe] = (time.time(), found)
@@ -624,7 +649,10 @@ def badges_of(user_id):
     when, found = badge_cache.get(user_id, (0, None))
     if found is not None and time.time() - when < 600:
         return found
-    r = rbx(f"https://badges.roblox.com/v1/users/{user_id}/badges?limit=10&sortOrder=Desc")
+    try:
+        r = rbx(f"https://badges.roblox.com/v1/users/{user_id}/badges?limit=10&sortOrder=Desc")
+    except Refused:
+        r = {}
     badges = [{"id": x["id"], "name": x.get("name", "")} for x in r.get("data", [])]
     if badges:
         icons = rbx("https://thumbnails.roblox.com/v1/badges/icons?badgeIds=" + ",".join(str(x["id"]) for x in badges)
