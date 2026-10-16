@@ -2,11 +2,13 @@
 // POST /draw {def, glb, png, size} -> {glb: base64, png: dataURL}
 import http from "node:http";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import puppeteer from "puppeteer-core";
 
 const PORT = Number(process.env.RENDER_PORT ?? 8096);
-const cookie = () => readFileSync(process.env.ROBLOX_COOKIE_FILE, "utf8").trim();
+// a logged-out cookie is refused where no cookie at all is fine, so it is dropped after its first 401
+let deadCookie;
+const cookie = () => { try { return statSync(process.env.ROBLOX_COOKIE_FILE).mtimeMs === deadCookie ? "" : readFileSync(process.env.ROBLOX_COOKIE_FILE, "utf8").trim(); } catch { return ""; } };
 const files = {
   "/": ["text/html", '<!doctype html><script src="/draco_decoder.js"></script><script src="/page.js"></script>'],
   "/page.js": ["text/javascript", readFileSync(new URL("page.js", import.meta.url))],
@@ -32,18 +34,40 @@ async function proxy(req, res, u) {
   for (const [k, v] of Object.entries(req.headers)) {
     if (!["host", "origin", "referer", "cookie", "connection", "content-length", "accept-encoding", "user-agent"].includes(k) && !k.startsWith("sec-")) headers[k] = v;
   }
-  if (roblox) headers.cookie = ".ROBLOSECURITY=" + cookie();
-  const r = await fetch(target, { method: req.method, headers, body: ["GET", "HEAD"].includes(req.method) ? undefined : await body(req), signal: AbortSignal.timeout(30000) });
+  const sent = ["GET", "HEAD"].includes(req.method) ? undefined : await body(req);
+  if (roblox && cookie()) headers.cookie = ".ROBLOSECURITY=" + cookie();
+  let r = await fetch(target, { method: req.method, headers, body: sent, signal: AbortSignal.timeout(30000) });
+  if (r.status === 401 && headers.cookie) {
+    deadCookie = statSync(process.env.ROBLOX_COOKIE_FILE).mtimeMs;
+    console.error("roblox login expired, going on without it");
+    delete headers.cookie;
+    r = await fetch(target, { method: req.method, headers, body: sent, signal: AbortSignal.timeout(30000) });
+  }
+  for (const c of headers.cookie ? r.headers.getSetCookie() : []) {
+    const fresh = /^\.ROBLOSECURITY=([^;]+)/.exec(c)?.[1];
+    if (fresh && fresh !== cookie()) { writeFileSync(process.env.ROBLOX_COOKIE_FILE + ".new", fresh); renameSync(process.env.ROBLOX_COOKIE_FILE + ".new", process.env.ROBLOX_COOKIE_FILE); console.error("roblox gave a new login, kept it"); }
+  }
   const out = { "content-type": r.headers.get("content-type") ?? "application/octet-stream" };
   if (r.headers.get("x-csrf-token")) out["x-csrf-token"] = r.headers.get("x-csrf-token");
-  if (!r.ok) console.error("roblox", r.status, target.hostname + target.pathname.slice(0, 60));
+  if ([401, 403].includes(r.status) && target.searchParams.get("id")) refused.add(target.searchParams.get("id"));
+  if (!r.ok) console.error("roblox", r.status, (target.hostname + target.pathname + target.search).slice(0, 100));
   const bytes = Buffer.from(await r.arrayBuffer());
   if (file && r.status === 200) { writeFileSync(file + ".type", out["content-type"]); writeFileSync(file, bytes); }
   res.writeHead(r.status, out);
   res.end(bytes);
 }
 
+// roblox's built-in files (body parts, heads, rigs) only download with a login, so they come from a copy of the roblox app's content folder
+const BUILT_IN = process.env.RENDER_BUILT_IN ?? "built-in";
+function local(res, path) {
+  const file = `${BUILT_IN}${path}`;
+  if (!existsSync(file)) { console.error("no built-in file", path); res.writeHead(404); return res.end(); }
+  res.writeHead(200, { "content-type": "application/octet-stream" });
+  res.end(readFileSync(file));
+}
+
 let browser, page, idle, line = Promise.resolve();
+const refused = new Set();       // items roblox would not hand over; the page remembers its failures, so this is never cleared
 
 async function tab() {
   if (page && !page.isClosed() && browser?.connected) return page;
@@ -66,10 +90,18 @@ async function draw(job) {
   const started = Date.now();
   try {
     const p = await tab();
-    const out = await Promise.race([
-      p.evaluate((j) => window.draw(j.def, j), job),
+    const once = (j) => Promise.race([
+      p.evaluate((j) => window.draw(j.def, j), j),
       new Promise((_, no) => setTimeout(() => no(new Error("took too long")), 150000)),
     ]);
+    const known = { ...job, def: { ...job.def, assets: job.def.assets.filter((a) => !refused.has(String(a.id))) } };
+    let out = await once(known);
+    const kept = known.def.assets.filter((a) => !refused.has(String(a.id)));
+    if (job.glb && !out.glb && kept.length < known.def.assets.length) {
+      // an item roblox keeps behind a login (old classic t-shirts) is left off rather than losing the whole avatar
+      console.error("left off", known.def.assets.length - kept.length, "items roblox refused");
+      out = await once({ ...job, def: { ...job.def, assets: kept } });
+    }
     console.error("drew", job.def.assets.length, "items in", Date.now() - started, "ms");
     return out;
   } catch (e) {
@@ -85,6 +117,7 @@ http.createServer(async (req, res) => {
   try {
     if (files[u.pathname]) { res.writeHead(200, { "content-type": files[u.pathname][0] }); return res.end(files[u.pathname][1]); }
     if (u.pathname === "/rbx") return await proxy(req, res, u);
+    if (/^\/(rbxasset|rig)\//.test(u.pathname) && !u.pathname.includes("..")) return local(res, decodeURIComponent(u.pathname));
     if (u.pathname === "/draw" && req.method === "POST") {
       const job = JSON.parse(await body(req));
       const out = await (line = line.catch(() => {}).then(() => draw(job)));
